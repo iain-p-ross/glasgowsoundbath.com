@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <url>
+    <loc>https://www.glasgowsoundbath.com/</loc>
+    <lastmod>2025-10-26</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>1.0</priority>
+
+    <!-- Key share image -->
+    <image:image>
+      <image:loc>https://www.glasgowsoundbath.com/assets/og.jpg</image:loc>
+      <image:title>Glasgow Soundbath</image:title>
+    </image:image>
+
+    <!-- Gallery highlights -->
+    <image:image>
+      <image:loc>https://www.glasgowsoundbath.com/assets/gallery/arlington.jpg</image:loc>
+      <image:title>Arlington Baths— crystal bowls and gong in a bright hall</image:title>
+    </image:image>
+    <image:image>
+      <image:loc>https://www.glasgowsoundbath.com/assets/gallery/skypark_group.jpg</image:loc>
+      <image:title>Skypark Glasgow— group soundbath with panoramic city views</image:title>
+    </image:image>
+  </url>
+</urlset>

@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Awstats Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg"></div>
+  <main class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Traffic Overview</p>
+        <h1><span id="site-name">your site</span> analytics</h1>
+        <p class="sub">A simpler view of AWStats, closer to Plausible.</p>
+      </div>
+      <div class="controls">
+        <label>
+          Range
+          <select id="range-preset">
+            <option value="7d">Last 7 days</option>
+            <option value="30d" selected>Last 30 days</option>
+            <option value="90d">Last 90 days</option>
+            <option value="this-month">This month</option>
+            <option value="last-month">Last month</option>
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+        <label class="date-field">
+          From
+          <input type="date" id="from-date" />
+        </label>
+        <label class="date-field">
+          To
+          <input type="date" id="to-date" />
+        </label>
+        <button id="apply-range">Apply</button>
+      </div>
+    </header>
+
+    <section class="grid">
+      <article class="card">
+        <p class="label">Visits</p>
+        <h2 id="visits">-</h2>
+        <p class="muted">Total visits in range</p>
+      </article>
+      <article class="card">
+        <p class="label">Pageviews</p>
+        <h2 id="pages">-</h2>
+        <p class="muted">Total page views</p>
+      </article>
+      <article class="card">
+        <p class="label">Hits</p>
+        <h2 id="hits">-</h2>
+        <p class="muted">All asset hits</p>
+      </article>
+      <article class="card">
+        <p class="label">Bandwidth</p>
+        <h2 id="bandwidth">-</h2>
+        <p class="muted">Data transferred</p>
+      </article>
+    </section>
+
+    <section class="chart-card">
+      <div class="chart-header">
+        <div>
+          <h3>Visitors over time</h3>
+          <p class="muted" id="range-label">-</p>
+        </div>
+        <span class="pill" id="last-update">Last update: -</span>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="visits-chart" width="900" height="240"></canvas>
+        <div id="chart-tooltip" class="chart-tooltip"></div>
+      </div>
+    </section>
+
+
+    <section class="card list daily">
+      <div class="daily-header">
+        <h3>Daily visits</h3>
+        <p class="muted" id="daily-range">-</p>
+      </div>
+      <div id="daily-list" class="list-body"></div>
+    </section>
+
+    <section class="split">
+      <article class="card list">
+        <h3>Top pages</h3>
+        <p class="muted list-range">Range: -</p>
+        <div id="top-pages" class="list-body"></div>
+      </article>
+      <article class="card list">
+        <h3>Referrers</h3>
+        <p class="muted list-range">Range: -</p>
+        <div id="top-referrers" class="list-body"></div>
+      </article>
+    </section>
+
+
+    <section class="split">
+      <article class="card list">
+        <h3>Countries</h3>
+        <p class="muted list-range">Range: -</p>
+        <div id="top-countries" class="list-body"></div>
+      </article>
+      <article class="card list">
+        <h3>Browsers</h3>
+        <p class="muted list-range">Range: -</p>
+        <div id="top-browsers" class="list-body"></div>
+      </article>
+      <article class="card list">
+        <h3>Operating systems</h3>
+        <p class="muted list-range">Range: -</p>
+        <div id="top-os" class="list-body"></div>
+      </article>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+.block {
+    display: block;
+    width: 100%;
+    border: none;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    text-align: center;
+    }

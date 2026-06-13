@@ -1,0 +1,7 @@
+
+RewriteOptions inherit
+
+RewriteEngine on
+RewriteCond %{HTTP_HOST} ^glasgowsoundbath\.com$ [OR]
+RewriteCond %{HTTP_HOST} ^www\.glasgowsoundbath\.com$
+RewriteRule ^instagram$ "https\:\/\/www\.glasgowsoundbath\.com\?utm_source\=instagram\&utm_medium\=social\&utm_campaign\=link\-in\-bio\/" [R=302,L]

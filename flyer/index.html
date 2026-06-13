@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Redirecting...</title>
+
+    <meta http-equiv="refresh" content="0; url=https://www.glasgowsoundbath.com/?utm_source=flyer&utm_medium=qr&utm_campaign=print" />
+
+    <script>
+      (function () {
+        var target = "https://www.glasgowsoundbath.com/?utm_source=flyer&utm_medium=qr&utm_campaign=print";
+        try {
+          if (typeof window.plausible === "function") {
+            window.plausible("Flyer Visit");
+          }
+        } catch (e) {}
+        window.location.replace(target);
+      })();
+    </script>
+  </head>
+  <body>
+    <noscript>
+      <p>
+        Redirecting to Glasgow Soundbath.
+        <a href="https://www.glasgowsoundbath.com/?utm_source=flyer&utm_medium=qr&utm_campaign=print">Tap here if you are not redirected.</a>
+      </p>
+    </noscript>
+  </body>
+</html>
