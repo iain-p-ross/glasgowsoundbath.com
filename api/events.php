@@ -12,7 +12,7 @@ const MAX_PAGES    = 5;    // 50 events per page; a guard against looping foreve
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: public, max-age=300');
 
-$cacheFile = sys_get_temp_dir() . '/gsb_events_cache.json';
+$cacheFile = sys_get_temp_dir() . '/gsb_events_cache_v2.json';
 
 /* ---- Fresh cache: nothing else to do ---------------------------------- */
 if (is_readable($cacheFile) && (time() - (int)filemtime($cacheFile)) < CACHE_TTL) {
@@ -85,6 +85,13 @@ do {
     }
 
     foreach ($data['events'] as $e) {
+        /* status=live does NOT exclude private events. An unlisted event is one
+           the organiser shares by direct link only, so it must never appear in
+           a public listing. Skip anything not publicly listed or invite-only. */
+        if (empty($e['listed']) || !empty($e['invite_only'])) {
+            continue;
+        }
+
         $id    = isset($e['id']) ? (string)$e['id'] : '';
         $venue = $e['venue'] ?? null;
 
