@@ -159,8 +159,8 @@ if (y) y.textContent = new Date().getFullYear();
 /* ===================================================
    Ambient audio engine (light file on slow links)
    =================================================== */
-const AUDIO_SRC_FULL  = 'assets/ambient.mp3';
-const AUDIO_SRC_LIGHT = 'assets/ambient_light.mp3';
+const AUDIO_SRC_FULL  = '/assets/ambient.mp3';
+const AUDIO_SRC_LIGHT = '/assets/ambient_light.mp3';
 let _chosenAudioSrc = null;
 
 function wantLightAudio(){
@@ -456,89 +456,4 @@ async function stopAudio(){
       open(i);
     });
   });
-})();
-
-/* Events embed: inline loading row; hide only when the widget is truly present */
-(function(){
-  const wrap = document.getElementById('eventsWrap');
-  if (!wrap) return;
-
-  const skeleton = document.getElementById('eventsSkeleton');
-  const slot = wrap.querySelector('[data-events-calendar-app]');
-  const bg = document.getElementById('bg-video');
-
-  // Hard-hide the row and mark not busy
-  function finish(){
-    wrap.setAttribute('aria-busy','false');
-    wrap.dataset.ready = '1';               // CSS hides .events-skeleton
-    if (skeleton && skeleton.parentNode) {
-      skeleton.style.display = 'none';      // belt-and-braces
-      skeleton.parentNode.removeChild(skeleton);
-    }
-    if (bg) { bg.preload = 'auto'; try { bg.play(); } catch(_) {} }
-    cleanup();
-  }
-
-  // A robust "is it really there?" test
-  function looksReady(){
-    // A) A real iframe is present AND has real area
-    const ifr = wrap.querySelector('iframe');
-    if (ifr && ifr.clientWidth >= 200 && ifr.clientHeight >= 220) return true;
-
-    // B) The slot gained actual children (non-iframe builds)
-    if (slot && slot.querySelector('*')) return true;
-
-    // C) The container height grew substantially beyond the loading row
-    const skH = skeleton ? skeleton.getBoundingClientRect().height : 0;
-    const wrapH = wrap.getBoundingClientRect().height;
-    if (wrapH > Math.max(300, skH + 120)) return true;
-
-    return false;
-  }
-
-  // Wire iframe load if/when one appears (most reliable on iOS/Instagram)
-  function wireIframe(ifr){
-    if (!ifr || ifr._wired) return;
-    ifr._wired = true;
-    ifr.addEventListener('load', () => {
-      // tiny delay for layout settling; then re-check
-      setTimeout(() => { if (looksReady()) finish(); }, 120);
-    }, { once:true });
-  }
-
-  // Observe DOM changes (iframes/children arriving)
-  const mo = new MutationObserver(muts => {
-    for (const m of muts){
-      m.addedNodes && m.addedNodes.forEach(n=>{
-        if (n.tagName === 'IFRAME') wireIframe(n);
-        if (slot && slot.contains(n) && looksReady()) finish();
-      });
-    }
-  });
-  mo.observe(wrap, { childList: true, subtree: true });
-
-  // Resize observer (container height changes without child mutations)
-  let ro = null;
-  if ('ResizeObserver' in window){
-    ro = new ResizeObserver(() => { if (looksReady()) finish(); });
-    ro.observe(wrap);
-    if (slot) ro.observe(slot);
-  }
-
-  // Poll fallback (covers stubborn iOS/IG cases that miss both)
-  const poll = setInterval(() => {
-    const ifr = wrap.querySelector('iframe');
-    if (ifr) wireIframe(ifr);             // ensure we’ll catch its load
-    if (looksReady()) finish();
-  }, 500);
-
-  // Don’t leave aria-busy stuck forever if the network blocks entirely
-  const safety = setTimeout(() => { wrap.setAttribute('aria-busy','false'); }, 60000);
-
-  function cleanup(){
-    clearInterval(poll);
-    clearTimeout(safety);
-    mo.disconnect();
-    if (ro) ro.disconnect();
-  }
 })();
