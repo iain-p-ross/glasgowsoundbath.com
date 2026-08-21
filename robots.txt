@@ -2,3 +2,6 @@ User-agent: *
 Allow: /
 
 Sitemap: https://www.glasgowsoundbath.com/sitemap.xml
+
+# Staging copy of the live site — must not be indexed.
+Disallow: /test_site/

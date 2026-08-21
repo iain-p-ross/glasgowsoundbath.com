@@ -1,0 +1,7 @@
+# test_site is a staging copy of the live site. Keep it out of search results:
+# a public duplicate is an SEO problem and a stray visitor could book from a
+# stale page. Headers rather than a meta tag, so index.html stays diffable
+# against the root copy.
+<IfModule mod_headers.c>
+  Header set X-Robots-Tag "noindex, nofollow, noarchive"
+</IfModule>

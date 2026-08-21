@@ -1,0 +1,7 @@
+# Eventbrite API credentials — uploaded to the server by hand, never committed.
+# Also excluded from the FTP deploy so a deploy cannot delete it (see
+# .github/workflows/deploy.yml).
+api/config.php
+
+.DS_Store
+.ftpquota

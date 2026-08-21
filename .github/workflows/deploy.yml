@@ -24,3 +24,4 @@ jobs:
             .ftpquota
             stats/**
             .well-known/**
+            api/config.php
