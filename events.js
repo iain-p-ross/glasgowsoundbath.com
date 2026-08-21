@@ -136,7 +136,12 @@
     row('calendar', fullDate(ev.start_time, ev.timezone));
     row('clock', timeRange(ev));
     if (ev.location) row('pin', ev.location);
-    linkRow('ticket', 'Buy Tickets', withAff(ev.tickets_link || ev.event_link));
+    /* Deliberately the event page, not the tickets-external checkout URL.
+       That endpoint is built to be loaded inside an embedded checkout and,
+       opened top-level with a logged-in Eventbrite session, can fail with
+       "Request Header Fields Too Large". The event page is also the exact
+       form Eventbrite generates for tracking links. */
+    linkRow('ticket', 'Buy Tickets', withAff(ev.event_link || ev.tickets_link));
     linkRow('external', 'More Information', withAff(ev.event_link));
     body.appendChild(meta);
 
