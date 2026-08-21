@@ -10,7 +10,11 @@ const HTTP_TIMEOUT = 8;
 const MAX_PAGES    = 5;    // 50 events per page; a guard against looping forever
 
 header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: public, max-age=300');
+/* Deliberately not cached by the browser or the host's LiteSpeed page cache.
+   The 15-minute file cache below already keeps Eventbrite requests rare, and
+   an edge cache on top only delays corrections — an event pulled from sale, or
+   one that should never have been listed, must disappear on the next request. */
+header('Cache-Control: no-store, max-age=0');
 
 $cacheFile = sys_get_temp_dir() . '/gsb_events_cache_v2.json';
 
