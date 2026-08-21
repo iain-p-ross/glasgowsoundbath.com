@@ -9,6 +9,11 @@
   const SHOW_IMAGES = false;   // variant switch: true renders the Eventbrite artwork
   const MAX_EVENTS  = 8;       // dates shown before the "show all" expander; 0 = all
   const ORGANISER   = 'https://glasgowsoundbath.eventbrite.com';
+  /* Eventbrite tracking link name. Must match a tracking link created on the
+     event in Eventbrite, exactly, including capitalisation. An unrecognised
+     value is harmless — Eventbrite serves the same page and simply does not
+     attribute the visit. Set to '' to switch tracking off. */
+  const AFF_CODE    = 'website';
 
   const wrap = document.getElementById('eventsWrap');
   if (!wrap) return;
@@ -40,6 +45,13 @@
     p.setAttribute('d', ICONS[name]);
     svg.appendChild(p);
     return svg;
+  };
+
+  /* Tag an Eventbrite URL with the tracking code, respecting any query string
+     the URL already carries. */
+  const withAff = (url) => {
+    if (!url || !AFF_CODE) return url;
+    return url + (url.indexOf('?') === -1 ? '?' : '&') + 'aff=' + encodeURIComponent(AFF_CODE);
   };
 
   /* ---- Dates ------------------------------------------------------------- */
@@ -97,7 +109,7 @@
 
     const h3 = el('h3', 'event-title');
     const titleLink = el('a', null, ev.title);
-    titleLink.href = ev.event_link;
+    titleLink.href = withAff(ev.event_link);
     titleLink.target = '_blank';
     titleLink.rel = 'noopener';
     h3.appendChild(titleLink);
@@ -124,8 +136,8 @@
     row('calendar', fullDate(ev.start_time, ev.timezone));
     row('clock', timeRange(ev));
     if (ev.location) row('pin', ev.location);
-    linkRow('ticket', 'Buy Tickets', ev.tickets_link || ev.event_link);
-    linkRow('external', 'More Information', ev.event_link);
+    linkRow('ticket', 'Buy Tickets', withAff(ev.tickets_link || ev.event_link));
+    linkRow('external', 'More Information', withAff(ev.event_link));
     body.appendChild(meta);
 
     /* Expandable detail — only when there is something to show */
