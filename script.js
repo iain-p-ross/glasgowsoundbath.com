@@ -49,10 +49,55 @@ if (y) y.textContent = new Date().getFullYear();
   let reduced = !!(rm && rm.matches);
   let triedPlay = false;
 
+  /* When autoplay is refused — iOS Low Power Mode is the usual cause — Safari
+     paints its own play control over the video. On a decorative background
+     that control is both ugly and useless: tapping it starts a silent video
+     the visitor never asked for, and it sits on top of the page. So hide the
+     video entirely and paint its poster as a static backdrop instead, which
+     is what the page looks like before the video fades in anyway. */
+  let posterLayer = null;
+
+  function showPoster(){
+    if (posterLayer) return;
+    const poster = v.getAttribute('poster');
+    if (!poster) return;
+    posterLayer = document.createElement('div');
+    posterLayer.className = 'bg-video-fallback';
+    posterLayer.setAttribute('aria-hidden','true');
+    const st = posterLayer.style;
+    st.position = 'fixed';
+    st.inset = '0';
+    st.zIndex = '-2';                     // same layer the video occupies
+    st.background = 'url("' + poster + '") center / cover no-repeat';
+    st.filter = 'saturate(.85) contrast(.96) hue-rotate(-6deg)';   // matches .bg-video
+    st.pointerEvents = 'none';
+    document.body.appendChild(posterLayer);
+    v.style.display = 'none';             // removes Safari's dead play control
+  }
+
+  function hidePoster(){
+    if (!posterLayer) return;
+    posterLayer.remove();
+    posterLayer = null;
+    v.style.display = '';
+  }
+
+  async function attemptPlay(){
+    if (reduced) { showPoster(); return; }
+    try {
+      await v.play();
+      hidePoster();                       // playing for real, drop the still
+    } catch (err) {
+      // NotAllowedError: autoplay refused. Nothing to retry our way out of
+      // in Low Power Mode, so fall back to the still image.
+      showPoster();
+    }
+  }
+
   async function tryPlayOnce(){
-    if (triedPlay || reduced) return;
+    if (triedPlay || reduced) { if (reduced) showPoster(); return; }
     triedPlay = true;
-    try { await v.play(); } catch {}
+    await attemptPlay();
   }
 
   // Patient watchdog — keep poster, keep buffering, retry later
@@ -67,7 +112,7 @@ if (y) y.textContent = new Date().getFullYear();
     clearTimeout(retryTimer);
     retryTimer = setTimeout(async ()=>{
       attempts++;
-      try { await v.play(); } catch {}
+      await attemptPlay();
       if (!v.classList.contains('ready') && attempts < 3) scheduleRetry();
     }, attempts === 0 ? 8000 : 12000);
   }
@@ -94,12 +139,12 @@ if (y) y.textContent = new Date().getFullYear();
   }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) tryPlayOnce(); });
   window.addEventListener('pageshow', () => { tryPlayOnce(); });
-  window.addEventListener('pointerdown', function once(){ tryPlayOnce(); window.removeEventListener('pointerdown', once); }, { once:true, passive:true });
+  window.addEventListener('pointerdown', function once(){ attemptPlay(); window.removeEventListener('pointerdown', once); }, { once:true, passive:true });
 
   if (rm && rm.addEventListener){
     rm.addEventListener('change', e => {
       reduced = !!e.matches;
-      if (reduced) { try { v.pause(); } catch {} } else { tryPlayOnce(); }
+      if (reduced) { try { v.pause(); } catch {} showPoster(); } else { hidePoster(); attemptPlay(); }
     });
   }
 })();

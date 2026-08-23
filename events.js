@@ -245,7 +245,14 @@
     replaceWrap(list);
     wrap.dataset.ready = '1';
     const bg = document.getElementById('bg-video');
-    if (bg) { bg.preload = 'auto'; try { bg.play(); } catch (_) {} }
+    if (bg) {
+      bg.preload = 'auto';
+      // play() returns a promise; a try/catch does not catch its rejection,
+      // which is what produced "Uncaught (in promise) AbortError" in the
+      // console. If it is refused, script.js handles the poster fallback.
+      const p = bg.play();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    }
   }
 
   function degrade(message) {
