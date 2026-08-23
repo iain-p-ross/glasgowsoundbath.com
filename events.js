@@ -9,11 +9,60 @@
   const SHOW_IMAGES = false;   // variant switch: true renders the Eventbrite artwork
   const MAX_EVENTS  = 8;       // dates shown before the "show all" expander; 0 = all
   const ORGANISER   = 'https://glasgowsoundbath.eventbrite.com';
-  /* Eventbrite tracking link name. Must match a tracking link created on the
-     event in Eventbrite, exactly, including capitalisation. An unrecognised
-     value is harmless — Eventbrite serves the same page and simply does not
-     attribute the visit. Set to '' to switch tracking off. */
-  const AFF_CODE    = 'website';
+  /* ---- Where did this visitor come from? --------------------------------
+     Eventbrite records whatever we put in ?aff=<code> against the ticket, so
+     this code is how a sale gets traced back to a post, an ad or a search.
+     No registration needed: an unknown code is stored exactly like a known one.
+
+     Two signals, in order of trust:
+       1. utm_* on our own URL  — we control the link, so this is reliable.
+       2. document.referrer     — a fallback; Instagram's in-app browser often
+                                  sends nothing, which lands as w-direct.
+
+     ⚠️ CLOSED VOCABULARY, on purpose. Never interpolate a raw utm_source into
+     the code: Eventbrite's affiliate space is unbounded and PERMANENT — there
+     is no way to delete a code once a ticket carries it. Anything unrecognised
+     becomes w-other, and adding a real code is a deliberate edit here.
+
+     Computed once at load, not per click: index.html navigates by #anchor only
+     and there is no pushState anywhere, so location.search survives the whole
+     visit. If the site ever gains client-side routing, move this into withAff.
+
+     No cookies and no storage, so there is nothing to consent to. */
+  const AFF_FALLBACK = 'website';   // pre-2026-08-23 behaviour; also the panic value
+
+  function resolveAff() {
+    try {
+      const q      = new URLSearchParams(location.search || '');
+      const source = (q.get('utm_source')   || '').trim().toLowerCase();
+      const medium = (q.get('utm_medium')   || '').trim().toLowerCase();
+      const camp   = (q.get('utm_campaign') || '').trim().toLowerCase();
+      const paid   = /paid|cpc|ppc/.test(medium);
+
+      if (source === 'instagram') {
+        if (camp.indexOf('link-in-bio') === 0) return 'w-ig-bio';   // prefix: tolerates the old link-in-bio/ typo
+        return paid ? 'w-ig-paid' : 'w-ig';
+      }
+      if (source === 'facebook') return 'w-fb';
+      if (source === 'flyer')    return 'w-flyer';
+      if (source)                return 'w-other';                  // tagged, but not a code we know
+
+      /* Untagged. Fall back to whoever linked here. */
+      let host = '';
+      try { host = new URL(document.referrer).hostname.toLowerCase(); } catch (e) { host = ''; }
+
+      if (!host || /(^|\.)glasgowsoundbath\.com$/.test(host))      return 'w-direct';
+      if (/(^|\.)instagram\.com$/.test(host))                      return 'w-ig-ref';
+      if (/(^|\.)facebook\.com$/.test(host))                       return 'w-fb-ref';
+      if (/(^|\.)google\./.test(host))                             return 'w-google';
+      if (/(^|\.)(bing|duckduckgo|ecosia|yahoo)\./.test(host))     return 'w-search';
+      return 'w-ref';
+    } catch (e) {
+      return AFF_FALLBACK;   // never let attribution break the listing
+    }
+  }
+
+  const AFF_CODE = resolveAff();
 
   const wrap = document.getElementById('eventsWrap');
   if (!wrap) return;

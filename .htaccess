@@ -2,6 +2,14 @@
 RewriteOptions inherit
 
 RewriteEngine on
+
+# Link-in-bio target: glasgowsoundbath.com/instagram
+# Clean to paste into a profile, and the UTMs are added server-side, so changing
+# the tagging never means editing the Instagram bio.
+#  - optional trailing slash + NC: /instagram/ and /Instagram both used to 404
+#  - the campaign value used to end "link-in-bio/" -- the slash sat INSIDE the
+#    query string, so the campaign was literally named with a trailing slash
+# NB the RewriteCond pair below must stay immediately above its RewriteRule.
 RewriteCond %{HTTP_HOST} ^glasgowsoundbath\.com$ [OR]
 RewriteCond %{HTTP_HOST} ^www\.glasgowsoundbath\.com$
-RewriteRule ^instagram$ "https\:\/\/www\.glasgowsoundbath\.com\?utm_source\=instagram\&utm_medium\=social\&utm_campaign\=link\-in\-bio\/" [R=302,L]
+RewriteRule ^instagram/?$ "https://www.glasgowsoundbath.com/?utm_source=instagram&utm_medium=social&utm_campaign=link-in-bio" [R=302,L,NC]
