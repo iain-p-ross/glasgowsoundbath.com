@@ -183,6 +183,30 @@ Eventbrite, two Meta Pixels on the Eventbrite pages, and server logs. Open item.
   returned HTTP 431 for a browser carrying a heavy Eventbrite session (the
   organiser's own). Documented in a code comment rather than fixed.
 
+## Campaign tracking
+
+Meta appends `utm_campaign={{campaign.id}}` to ads pointing at this site
+automatically — no setup was ever needed, and an earlier belief that UTMs had to
+be added by hand was wrong. `events.js` captures it into `CAMPAIGN` and the
+beacon carries it as `&c=`, so `api/logs.php` reports arrivals and clicks per
+campaign. Those ids join to `Meta Ads Raw`.`Campaign ID` in the sheet (verified
+3/3).
+
+⚠️ **The campaign is on the BEACON, never in the `aff` code.** Eventbrite
+affiliate codes are permanent and cannot be deleted, so a campaign id in one
+would accrue a new permanent code every campaign forever. The beacon goes to our
+own access log, where nothing is permanent.
+
+⚠️ `utm_id` and `utm_campaign` are **different values** on this account, so
+`utm_id` is something else — probably the adset. Only `utm_campaign` is taken.
+
+**Open, and gating the last step:** whether the Instagram app's boost flow
+expands `aff=ig-{{campaign.id}}` for ads pointing straight at Eventbrite. It has
+no "URL parameters" field, so the macro may not expand. Test on ONE boost and
+read the address bar — full instructions are in the sheet project's CLAUDE.md.
+Do not roll it out first: an unexpanded literal would be written to real tickets
+permanently.
+
 ## Timeline — read before comparing any metric
 
 | date | what began |
@@ -193,6 +217,7 @@ Eventbrite, two Meta Pixels on the Eventbrite pages, and server logs. Open item.
 | 2026-08-24 09:21 | **outbound clicks recorded.** No click data exists before this. |
 | 2026-08-24 09:44 | Plausible removed |
 | 2026-08-24 | `/instagram` becomes the Instagram bio link |
+| 2026-08-24 | campaign id captured on arrivals and clicks |
 
 ⚠️ **`w-ig-bio` will look tiny for weeks.** The bio only started pointing at
 `/instagram` on 2026-08-24; earlier bio traffic is sitting untagged in
