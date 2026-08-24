@@ -108,6 +108,30 @@ function classify($query, $referrer) {
     return 'w-ref';
 }
 
+/**
+ * The campaign this visit belongs to.
+ *
+ * Meta expands {{campaign.id}} into utm_campaign automatically, so paid traffic
+ * carries an 18-digit id that joins to `Meta Ads Raw`.`Campaign ID` in the
+ * sheet. Manual links carry a human label instead (link-in-bio, print), which is
+ * equally useful and lives in the same column.
+ *
+ * ⚠️ utm_id and utm_campaign are NOT the same value on this account — sampled
+ * together they differ, so utm_id is something else (probably the adset). Only
+ * utm_campaign is taken, and the sheet reports how many campaigns actually match
+ * Meta Ads Raw so a wrong assumption here shows up as a number rather than as
+ * silence.
+ */
+function campaignOf($query) {
+    if ($query === '') return '';
+    $p = [];
+    parse_str($query, $p);
+    $c = isset($p['utm_campaign']) ? trim((string)$p['utm_campaign']) : '';
+    // Same charset the aff codes use; anything else is not a campaign we can join on.
+    $c = preg_replace('/[^A-Za-z0-9._-]/', '', $c);
+    return substr($c, 0, 64);
+}
+
 /** Assets and API calls are not arrivals. */
 function isPageRequest($path) {
     if (strpos($path, '/api/') === 0) return false;
@@ -158,8 +182,8 @@ if (isset($_GET['file'])) {
     }
 }
 
-$arrivals = [];   // "date|source" => [visits, pageviews]
-$clicks   = [];   // "date|source|event|which" => n
+$arrivals = [];   // "date|source|campaign" => [visits, pageviews]
+$clicks   = [];   // "date|source|campaign|event|which" => n
 $lastSeen = [];   // visitor hash => last request time, for the visit window
 
 $linesRead = 0; $bots = 0; $unparsed = 0; $beacons = 0;
@@ -204,8 +228,9 @@ foreach ($files as $file) {
             $src   = isset($p['s']) ? preg_replace('/[^a-z0-9-]/i', '', (string)$p['s']) : '';
             $event = isset($p['e']) ? preg_replace('/[^0-9]/', '', (string)$p['e']) : '';
             $which = isset($p['w']) ? preg_replace('/[^a-z]/i', '', (string)$p['w']) : '';
+            $camp  = isset($p['c']) ? preg_replace('/[^A-Za-z0-9._-]/', '', (string)$p['c']) : '';
             if ($src !== '') {
-                $k = $day . '|' . $src . '|' . $event . '|' . $which;
+                $k = $day . '|' . $src . '|' . $camp . '|' . $event . '|' . $which;
                 $clicks[$k] = ($clicks[$k] ?? 0) + 1;
                 $beacons++;
             }
@@ -220,13 +245,14 @@ foreach ($files as $file) {
         if ($q !== '') $q = preg_replace('/(^|&)fbclid=[^&]*/', '', $q);
 
         $source = classify($q, $referrer);
-        $key = $day . '|' . $source;
+        $campaign = campaignOf($q);
+        $key = $day . '|' . $source . '|' . $campaign;
         if (!isset($arrivals[$key])) $arrivals[$key] = ['visits' => 0, 'pageviews' => 0];
         $arrivals[$key]['pageviews']++;
 
         // Visit = same visitor, same source, within VISIT_GAP. The hash exists
         // only inside this request and is never returned.
-        $vh = hash('sha256', $GLOBALS['SALT'] . $ip . $agent . $source);
+        $vh = hash('sha256', $GLOBALS['SALT'] . $ip . $agent . $source . $campaign);
         if (!isset($lastSeen[$vh]) || ($epoch - $lastSeen[$vh]) > VISIT_GAP) {
             $arrivals[$key]['visits']++;
         }
@@ -238,8 +264,9 @@ foreach ($files as $file) {
 
 $outArrivals = [];
 foreach ($arrivals as $k => $v) {
-    list($d, $s) = explode('|', $k, 2);
-    $outArrivals[] = ['date' => $d, 'source' => $s, 'visits' => $v['visits'], 'pageviews' => $v['pageviews']];
+    list($d, $s, $c) = array_pad(explode('|', $k, 3), 3, '');
+    $outArrivals[] = ['date' => $d, 'source' => $s, 'campaign' => $c,
+                      'visits' => $v['visits'], 'pageviews' => $v['pageviews']];
 }
 usort($outArrivals, function ($a, $b) {
     return $a['date'] === $b['date'] ? strcmp($a['source'], $b['source']) : strcmp($a['date'], $b['date']);
@@ -247,8 +274,9 @@ usort($outArrivals, function ($a, $b) {
 
 $outClicks = [];
 foreach ($clicks as $k => $n) {
-    list($d, $s, $e, $w) = array_pad(explode('|', $k, 4), 4, '');
-    $outClicks[] = ['date' => $d, 'source' => $s, 'event_id' => $e, 'which' => $w, 'clicks' => $n];
+    list($d, $s, $c, $e, $w) = array_pad(explode('|', $k, 5), 5, '');
+    $outClicks[] = ['date' => $d, 'source' => $s, 'campaign' => $c,
+                    'event_id' => $e, 'which' => $w, 'clicks' => $n];
 }
 usort($outClicks, function ($a, $b) {
     return $a['date'] === $b['date'] ? strcmp($a['source'], $b['source']) : strcmp($a['date'], $b['date']);

@@ -72,6 +72,18 @@
 
   const AFF_CODE = resolveAff();
 
+  /* The campaign this visit belongs to, for the BEACON ONLY.
+     ⚠️ Deliberately NOT part of the aff code. Eventbrite affiliate codes are
+     permanent and undeletable, so putting a campaign id in one would accrue a
+     new permanent code every campaign, forever. The beacon goes to our own
+     access log, where nothing is permanent and nothing is polluted. */
+  const CAMPAIGN = (function () {
+    try {
+      const c = new URLSearchParams(location.search || '').get('utm_campaign') || '';
+      return c.trim().replace(/[^A-Za-z0-9._-]/g, '').slice(0, 64);
+    } catch (e) { return ''; }
+  })();
+
   const wrap = document.getElementById('eventsWrap');
   if (!wrap) return;
 
@@ -119,7 +131,8 @@
       // /api/c 404s (which still logs, but returns a 1.2KB error body per click).
       const url = '/api/c.php?e=' + encodeURIComponent(eventId || '')
                 + '&s=' + encodeURIComponent(AFF_CODE)
-                + '&w=' + encodeURIComponent(which);
+                + '&w=' + encodeURIComponent(which)
+                + (CAMPAIGN ? '&c=' + encodeURIComponent(CAMPAIGN) : '');
       if (navigator.sendBeacon) navigator.sendBeacon(url);
       else new Image().src = url;
     } catch (e) { /* counting must never cost a booking */ }
