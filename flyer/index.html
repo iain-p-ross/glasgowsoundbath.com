@@ -10,11 +10,9 @@
     <script>
       (function () {
         var target = "https://www.glasgowsoundbath.com/?utm_source=flyer&utm_medium=qr&utm_campaign=print";
-        try {
-          if (typeof window.plausible === "function") {
-            window.plausible("Flyer Visit");
-          }
-        } catch (e) {}
+        // The redirect target carries utm_source=flyer, and the server logs
+        // both this page and the landing, so the visit is recorded without a
+        // third-party script. Plausible used to do this and is gone.
         window.location.replace(target);
       })();
     </script>

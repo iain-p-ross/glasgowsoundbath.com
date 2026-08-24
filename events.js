@@ -343,8 +343,9 @@
          with a visible booking link rather than a spinner that never stops. */
       if (window.console && console.warn) console.warn('[events]', err);
       degrade('Upcoming dates could not be loaded just now.');
-      if (typeof window.plausible === 'function') {
-        window.plausible('Events listing failed');
-      }
+      /* Report the failure the same way clicks are reported: a request to our own
+         server, which the access log records. Plausible used to carry this and
+         is gone. Nothing here may throw -- we are already in a catch. */
+      try { new Image().src = '/api/c.php?e=&s=listing-failed&w=error'; } catch (e) {}
     });
 })();
