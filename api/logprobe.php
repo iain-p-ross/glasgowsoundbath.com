@@ -9,20 +9,35 @@
  * If this probe finds a readable log, that is a better data source than AWStats
  * for everything we want, and it needs no tracking code on the site at all.
  *
+ * TWO MODES, because reading whole log files in one request blew the execution
+ * limit and returned an empty 500:
+ *   ?token=...              stat only. No file contents read at all. Cheap.
+ *   ?token=...&sample=/path first ~5 and last ~5 lines of ONE file, by seeking
+ *                           to the end rather than walking the whole thing.
+ *
  * SECURITY
  *  - Gated on a token in api/config.php, which is git-ignored and excluded from
  *    the FTP deploy. Without `probe_token` set, this endpoint refuses to run.
+ *  - `sample` is restricted to paths this file already knows about, so it can
+ *    never be used to read an arbitrary file on the server.
  *  - Every sample line has its IP address REDACTED before output. Raw logs are
- *    personal data; nothing here should ever put an IP in a browser or a sheet.
+ *    personal data; nothing here should put an IP in a browser or a sheet.
  *  - Reads only. Opens nothing for writing, changes nothing.
  *
  * DELETE THIS FILE once the question is answered. It exposes server paths.
- *
- *   /api/logprobe.php?token=...
  */
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store, max-age=0');
+
+// A fatal would otherwise return an empty 500 with no clue what happened.
+register_shutdown_function(function () {
+    $e = error_get_last();
+    if ($e && in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        echo json_encode(['ok' => false, 'fatal' => $e['message'], 'line' => $e['line']]);
+    }
+});
+@set_time_limit(20);
 
 $configFile = __DIR__ . '/config.php';
 if (!file_exists($configFile)) {
@@ -39,7 +54,7 @@ if (!is_array($config)) {
 
 $expected = isset($config['probe_token']) ? (string)$config['probe_token'] : '';
 $given    = isset($_GET['token']) ? (string)$_GET['token'] : '';
-if ($expected === '' ) {
+if ($expected === '') {
     http_response_code(403);
     echo json_encode(['error' => "Set 'probe_token' in api/config.php first."]);
     exit;
@@ -50,105 +65,128 @@ if (!hash_equals($expected, $given)) {
     exit;
 }
 
-/* ---------- helpers ---------- */
-
-/** Replace anything that looks like an IP so none ever reaches the output. */
-function redact($line) {
-    $line = preg_replace('/\b(?:\d{1,3}\.){3}\d{1,3}\b/', '<ip>', $line);
-    $line = preg_replace('/\b[0-9a-fA-F:]{6,}:[0-9a-fA-F:]*\b/', '<ip6>', $line);
-    // mbstring is not guaranteed on shared hosting.
-    return function_exists('mb_substr') ? mb_substr($line, 0, 400) : substr($line, 0, 400);
-}
-
-function firstAndLast($path, $isGz) {
-    $out = ['first' => null, 'last' => null, 'lines_sampled' => 0];
-    $fh = $isGz ? @gzopen($path, 'rb') : @fopen($path, 'rb');
-    if (!$fh) return $out;
-
-    $n = 0; $last = null; $first = null;
-    // Cap the read: a busy log can be very large and this is only a shape check.
-    while ($n < 200000) {
-        $line = $isGz ? gzgets($fh) : fgets($fh);
-        if ($line === false) break;
-        $line = rtrim($line, "\r\n");
-        if ($line === '') continue;
-        if ($first === null) $first = $line;
-        $last = $line;
-        $n++;
-    }
-    $isGz ? gzclose($fh) : fclose($fh);
-
-    $out['first'] = $first === null ? null : redact($first);
-    $out['last']  = $last  === null ? null : redact($last);
-    $out['lines_sampled'] = $n;
-    return $out;
-}
-
-function describe($path) {
-    $info = ['path' => $path, 'exists' => false];
-    if (!@file_exists($path)) return $info;
-    $info['exists']   = true;
-    $info['is_dir']   = @is_dir($path);
-    $info['readable'] = @is_readable($path);
-    if (!$info['readable']) return $info;
-
-    if ($info['is_dir']) {
-        $names = @scandir($path);
-        if ($names === false) { $info['listing_error'] = true; return $info; }
-        $names = array_values(array_filter($names, function ($n) { return $n !== '.' && $n !== '..'; }));
-        sort($names);
-        $info['entry_count'] = count($names);
-        $info['entries'] = array_slice($names, 0, 40);   // enough to identify, not a dump
-        return $info;
-    }
-
-    $info['size_bytes'] = @filesize($path);
-    $info['modified']   = @date('c', @filemtime($path));
-    $isGz = substr($path, -3) === '.gz';
-    $info['gzipped'] = $isGz;
-    $info = array_merge($info, firstAndLast($path, $isGz));
-    return $info;
-}
-
-/* ---------- what to look at ---------- */
-
 $home   = '/home/iainhwqg';
 $domain = 'glasgowsoundbath.com';
 
-$candidates = [
-    // cPanel's usual symlink, and the per-domain files inside it
-    "$home/access-logs",
-    "$home/access-logs/$domain",
-    "$home/access-logs/$domain-ssl_log",
-    "$home/access-logs/$domain-ssl_log.1",
-    "$home/logs",
-    "$home/logs/$domain",
-    // LiteSpeed / Apache system locations
-    "/usr/local/apache/domlogs/iainhwqg",
-    "/usr/local/apache/domlogs/iainhwqg/$domain",
-    "/usr/local/apache/domlogs/$domain",
-    "/usr/local/lsws/logs",
-    // Known-good control: the AWStats dir the stats dashboard already reads
-    "$home/tmp/awstats/ssl",
-    // Home listing, to discover anything the guesses above miss
-    $home,
-];
+/** Everything this probe is allowed to look at. `sample` cannot escape this. */
+function candidates($home, $domain) {
+    return [
+        "$home/access-logs",
+        "$home/access-logs/$domain",
+        "$home/access-logs/$domain-ssl_log",
+        "$home/logs",
+        "$home/logs/$domain",
+        "/usr/local/apache/domlogs/iainhwqg",
+        "/usr/local/apache/domlogs/iainhwqg/$domain",
+        "/usr/local/apache/domlogs/$domain",
+        "$home/tmp/awstats/ssl",
+        $home,
+    ];
+}
+
+function redact($line) {
+    $line = preg_replace('/\b(?:\d{1,3}\.){3}\d{1,3}\b/', '<ip>', $line);
+    $line = preg_replace('/\b[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{0,4}){3,}\b/', '<ip6>', $line);
+    return substr($line, 0, 320);
+}
+
+/* ---------- mode 2: sample one file, without walking it ---------- */
+
+if (isset($_GET['sample'])) {
+    $want = (string)$_GET['sample'];
+    $allowed = candidates($home, $domain);
+
+    // Also allow anything discovered inside an allowed directory, one level deep.
+    foreach (candidates($home, $domain) as $dir) {
+        if (@is_dir($dir) && @is_readable($dir)) {
+            foreach ((array)@scandir($dir) as $n) {
+                if ($n !== '.' && $n !== '..') $allowed[] = rtrim($dir, '/') . '/' . $n;
+            }
+        }
+    }
+    if (!in_array($want, $allowed, true)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Path not in the probe allow-list.', 'path' => $want]);
+        exit;
+    }
+    if (!@is_file($want) || !@is_readable($want)) {
+        echo json_encode(['ok' => false, 'path' => $want, 'error' => 'not a readable file']);
+        exit;
+    }
+
+    $isGz  = substr($want, -3) === '.gz';
+    $first = [];
+    $last  = [];
+
+    if ($isGz) {
+        $fh = @gzopen($want, 'rb');
+        if ($fh) {
+            $n = 0;
+            while ($n < 5 && ($l = gzgets($fh)) !== false) { $first[] = redact(rtrim($l, "\r\n")); $n++; }
+            gzclose($fh);
+        }
+    } else {
+        $fh = @fopen($want, 'rb');
+        if ($fh) {
+            $n = 0;
+            while ($n < 5 && ($l = fgets($fh)) !== false) { $first[] = redact(rtrim($l, "\r\n")); $n++; }
+            // Tail by seeking, so file size does not matter.
+            $size = @filesize($want);
+            $back = min($size, 8192);
+            if ($size > 0) {
+                fseek($fh, -$back, SEEK_END);
+                $tail = fread($fh, $back);
+                $lines = array_values(array_filter(explode("\n", (string)$tail), 'strlen'));
+                foreach (array_slice($lines, -5) as $l) $last[] = redact(rtrim($l, "\r"));
+            }
+            fclose($fh);
+        }
+    }
+
+    echo json_encode([
+        'ok' => true, 'path' => $want, 'gzipped' => $isGz,
+        'size_bytes' => @filesize($want), 'modified' => @date('c', @filemtime($want)),
+        'first_lines' => $first, 'last_lines' => $last,
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+/* ---------- mode 1: stat only, read no contents ---------- */
 
 $results = [];
-foreach ($candidates as $p) {
-    $results[] = describe($p);
+foreach (candidates($home, $domain) as $path) {
+    $info = ['path' => $path, 'exists' => @file_exists($path)];
+    if (!$info['exists']) { $results[] = $info; continue; }
+
+    $info['readable'] = @is_readable($path);
+    $info['is_dir']   = @is_dir($path);
+
+    if ($info['is_dir']) {
+        if ($info['readable']) {
+            $names = @scandir($path);
+            if (is_array($names)) {
+                $names = array_values(array_filter($names, function ($n) { return $n !== '.' && $n !== '..'; }));
+                sort($names);
+                $info['entry_count'] = count($names);
+                $info['entries'] = array_slice($names, 0, 40);
+            }
+        }
+    } else {
+        $info['size_bytes'] = @filesize($path);
+        $info['modified']   = @date('c', @filemtime($path));
+    }
+    $results[] = $info;
 }
 
 echo json_encode([
     'ok' => true,
-    'note' => 'READ-ONLY. IPs are redacted before output. Delete this file when done.',
+    'note' => 'Stat only. Add &sample=<path> to read a few lines from one file. IPs are redacted. Delete this file when done.',
     'php' => [
         'version'           => PHP_VERSION,
-        'open_basedir'      => ini_get('open_basedir') ?: null,   // the usual reason reads fail
+        'open_basedir'      => ini_get('open_basedir') ?: null,
         'disable_functions' => ini_get('disable_functions') ?: null,
         'gzopen_available'  => function_exists('gzopen'),
-        'script_user'       => function_exists('posix_getpwuid') && function_exists('posix_geteuid')
-            ? (posix_getpwuid(posix_geteuid())['name'] ?? null) : null,
+        'max_execution_time'=> ini_get('max_execution_time'),
     ],
     'candidates' => $results,
 ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
