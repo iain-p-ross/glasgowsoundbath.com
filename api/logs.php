@@ -115,10 +115,46 @@ function isPageRequest($path) {
     return true;
 }
 
-$files = [LOG_LIVE];
-if (!empty($_GET['archives']) && is_dir(LOG_ARCH) && is_readable(LOG_ARCH)) {
+/**
+ * File selection.
+ *
+ *   (default)          the live log only. Small and fast; this is what the daily
+ *                      trigger uses.
+ *   &archives=1        live log plus every rotated .gz. ⚠️ Can exceed
+ *                      UrlFetchApp's ~60s ceiling once there is more than a
+ *                      month or two of history — it returns fine to curl and
+ *                      throws to Apps Script, which is a confusing failure.
+ *   &file=<name>       ONE archive by filename. Resumable: loop over
+ *                      &list=1 and pull them one at a time. Prefer this for a
+ *                      backfill.
+ *   &list=1            just name the archives available, read nothing.
+ */
+$archiveNames = [];
+if (is_dir(LOG_ARCH) && is_readable(LOG_ARCH)) {
     foreach ((array)scandir(LOG_ARCH) as $n) {
-        if (strpos($n, ARCH_MATCH) === 0 && substr($n, -3) === '.gz') $files[] = LOG_ARCH . '/' . $n;
+        if (strpos($n, ARCH_MATCH) === 0 && substr($n, -3) === '.gz') $archiveNames[] = $n;
+    }
+    sort($archiveNames);
+}
+
+if (!empty($_GET['list'])) {
+    echo json_encode(['ok' => true, 'live' => LOG_LIVE, 'archives' => $archiveNames]);
+    exit;
+}
+
+$files = [];
+if (isset($_GET['file'])) {
+    $want = basename((string)$_GET['file']);          // basename: no path escape
+    if (!in_array($want, $archiveNames, true)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Unknown archive.', 'archives' => $archiveNames]);
+        exit;
+    }
+    $files[] = LOG_ARCH . '/' . $want;
+} else {
+    $files[] = LOG_LIVE;
+    if (!empty($_GET['archives'])) {
+        foreach ($archiveNames as $n) $files[] = LOG_ARCH . '/' . $n;
     }
 }
 
@@ -128,7 +164,7 @@ $lastSeen = [];   // visitor hash => last request time, for the visit window
 
 $linesRead = 0; $bots = 0; $unparsed = 0; $beacons = 0;
 $minDay = null; $maxDay = null; $truncated = false;
-$deadline = time() + 45;
+$deadline = time() + 25;   // well inside UrlFetchApp's ~60s ceiling
 $tzLondon = new DateTimeZone('Europe/London');
 
 $re = '/^(\S+) \S+ \S+ \[([^\]]+)\] "(\S+) (\S+) [^"]*" (\d{3}) \S+ "([^"]*)" "([^"]*)"/';
