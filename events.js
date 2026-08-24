@@ -115,7 +115,9 @@
      does not unload and there is no delivery race to lose. */
   const ping = (which, eventId) => {
     try {
-      const url = '/api/c?e=' + encodeURIComponent(eventId || '')
+      // .php is required: the host does not rewrite extensionless paths, and
+      // /api/c 404s (which still logs, but returns a 1.2KB error body per click).
+      const url = '/api/c.php?e=' + encodeURIComponent(eventId || '')
                 + '&s=' + encodeURIComponent(AFF_CODE)
                 + '&w=' + encodeURIComponent(which);
       if (navigator.sendBeacon) navigator.sendBeacon(url);
