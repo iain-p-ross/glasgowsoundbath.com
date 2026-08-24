@@ -39,11 +39,19 @@
       const camp   = (q.get('utm_campaign') || '').trim().toLowerCase();
       const paid   = /paid|cpc|ppc/.test(medium);
 
-      if (source === 'instagram') {
+      /* ⚠️ Meta writes utm_source={{site_source_name}}, which expands to `ig`,
+         `fb`, `an` (Audience Network) or `msg` — NOT `instagram`. Measured in
+         the raw access logs 2026-08-24: over one month, utm_source=ig appeared
+         1,034 times against 16 for `instagram`, so matching only the long form
+         sent ~98% of paid Instagram traffic to w-other. Normalise first. */
+      const META_IG = ['instagram', 'ig'];
+      const META_FB = ['facebook', 'fb', 'an', 'msg'];
+
+      if (META_IG.indexOf(source) !== -1) {
         if (camp.indexOf('link-in-bio') === 0) return 'w-ig-bio';   // prefix: tolerates the old link-in-bio/ typo
         return paid ? 'w-ig-paid' : 'w-ig';
       }
-      if (source === 'facebook') return 'w-fb';
+      if (META_FB.indexOf(source) !== -1) return paid ? 'w-fb-paid' : 'w-fb';
       if (source === 'flyer')    return 'w-flyer';
       if (source)                return 'w-other';                  // tagged, but not a code we know
 
