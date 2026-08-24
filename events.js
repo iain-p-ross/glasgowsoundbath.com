@@ -104,6 +104,25 @@
     return svg;
   };
 
+  /* Click beacon. The request itself IS the record: it lands in the server's
+     access log, which the log parser reads. No redirect, so the visitor still
+     goes straight to Eventbrite via a plain <a href>.
+
+     ⚠️ FIRE AND FORGET. Never await it, never branch on it, and NEVER call
+     preventDefault() on the link to "make sure" it arrives — that is exactly how
+     analytics breaks checkout flows. If this is blocked, throws, or the endpoint
+     is deleted, the click must still work. Links are target="_blank" so the page
+     does not unload and there is no delivery race to lose. */
+  const ping = (which, eventId) => {
+    try {
+      const url = '/api/c?e=' + encodeURIComponent(eventId || '')
+                + '&s=' + encodeURIComponent(AFF_CODE)
+                + '&w=' + encodeURIComponent(which);
+      if (navigator.sendBeacon) navigator.sendBeacon(url);
+      else new Image().src = url;
+    } catch (e) { /* counting must never cost a booking */ }
+  };
+
   /* Tag an Eventbrite URL with the tracking code, respecting any query string
      the URL already carries. */
   const withAff = (url) => {
@@ -169,6 +188,7 @@
     titleLink.href = withAff(ev.event_link);
     titleLink.target = '_blank';
     titleLink.rel = 'noopener';
+    titleLink.addEventListener('click', () => ping('title', ev.id));
     h3.appendChild(titleLink);
     body.appendChild(h3);
 
@@ -186,6 +206,7 @@
       a.href = href;
       a.target = '_blank';
       a.rel = 'noopener';
+      a.addEventListener('click', () => ping(name, ev.id));
       item.appendChild(a);
       meta.appendChild(item);
     };
