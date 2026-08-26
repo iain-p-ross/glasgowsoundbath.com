@@ -28,3 +28,4 @@ jobs:
             tools/**
             node_modules/**
             package*.json
+            CLAUDE.md

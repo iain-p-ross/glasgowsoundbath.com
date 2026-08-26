@@ -13,3 +13,15 @@ RewriteEngine on
 RewriteCond %{HTTP_HOST} ^glasgowsoundbath\.com$ [OR]
 RewriteCond %{HTTP_HOST} ^www\.glasgowsoundbath\.com$
 RewriteRule ^instagram/?$ "https://www.glasgowsoundbath.com/?utm_source=instagram&utm_medium=social&utm_campaign=link-in-bio" [R=302,L,NC]
+
+# ⚠️ Documentation and tooling are not content. CLAUDE.md was served publicly at
+# /CLAUDE.md from 2026-08-24 to 2026-08-26 — it describes the hosting layout,
+# the home directory, the server log paths and every internal endpoint. The FTP
+# deploy SYNCS, so anything committed and not excluded lands in the web root;
+# this is the second line of defence for when something slips past that list.
+#
+# A RewriteRule rather than <FilesMatch Require all denied> because the rewrite
+# engine is already on above and this needs no Apache 2.2/2.4 syntax judgement.
+# ⚠️ .json is deliberately NOT blocked — it would break any static JSON the site
+# or a future manifest serves. Add names here, not extensions, if that changes.
+RewriteRule \.(md|markdown|ya?ml|lock|sh|bak|orig)$ - [F,L]
