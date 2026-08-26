@@ -305,22 +305,19 @@ MacPorts. ⚠️ **The command still exits 0**, so a script that only checks the
 exit status will report success; check `brew list --versions php`. It leaves
 ~2.1GB of built dependencies behind either way.
 
-Two things work instead, and both live in `.gitignore`d scratch space:
+**Use `tools/phpcheck/`** — real PHP 8.0 compiled to WebAssembly, plus a JS PHP
+parser. Read its README; it carries the gotchas. `node_modules` is git-ignored
+and the whole directory is excluded from the deploy.
 
-| | |
-|---|---|
-| **parse check** | `npm i php-parser` — a real PHP parser in JS. Catches the fatal class (unbalanced braces, bad syntax). ⚠️ **It does NOT reject PHP 8 syntax** even with `php7: true` — `match`, `?->`, `fn()` all pass. Grep for those separately. |
-| **execution** | `npm i @php-wasm/node @php-wasm/universal` — real PHP 8.0 in WASM. `loadNodeRuntime(v, { emscriptenOptions: { processId: 1 } })`, and **one `php.run()` per process**: a second run on the same instance hangs forever. |
+```bash
+cd tools/phpcheck && npm install
+npm run lint   # parse-check every .php, and grep for PHP 8 syntax
+npm test       # 56 checks: index.php across six scenarios
+```
 
-Seed `/tmp/gsb_events_cache_v4.json` and `index.php` renders with no network at
-all. The four failure modes worth re-running after any change here — all four
-must return a complete page with `<!DOCTYPE html>` first and the static
-fallback: **empty event list**, **one event with an empty `start_time`**,
-**a corrupted `events-render.php`**, **a missing `events-render.php`**.
-
-⚠️ **Do not pipe a long-running command into `tail`** — it buffers, so the
-output looks like a hang. That wasted two debugging cycles here, once on brew
-and once on the WASM runner.
+⚠️ **Run `npm test` after touching `index.php` or `api/events-render.php`.**
+Every case in it is a bug that actually happened. It has been checked against
+reintroduced bugs, so a pass means something.
 
 ## Privacy
 

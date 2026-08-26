@@ -5,3 +5,10 @@ api/config.php
 
 .DS_Store
 .ftpquota
+
+# Local dev tooling. tools/ IS committed (it is small and worth having), but its
+# dependencies are not, and NONE of it is deployed — see the exclude list in
+# .github/workflows/deploy.yml. That list matters: the FTP action SYNCS, so
+# anything not excluded is uploaded to the public web root.
+node_modules/
+tools/**/package-lock.json

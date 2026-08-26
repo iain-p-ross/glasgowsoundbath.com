@@ -25,3 +25,6 @@ jobs:
             stats/**
             .well-known/**
             api/config.php
+            tools/**
+            node_modules/**
+            package*.json

@@ -1,0 +1,16 @@
+{
+  "name": "gsb-phpcheck",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Parse-check and execute this site's PHP without a local PHP install.",
+  "scripts": {
+    "lint": "node lint.js",
+    "test": "node test.js",
+    "php": "node run.js"
+  },
+  "dependencies": {
+    "@php-wasm/node": "^1.0.0",
+    "@php-wasm/universal": "^1.0.0",
+    "php-parser": "^3.7.0"
+  }
+}
