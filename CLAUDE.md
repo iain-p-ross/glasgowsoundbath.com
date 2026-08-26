@@ -295,10 +295,17 @@ The access log cannot be blocked and costs nothing.
 
 ## Testing PHP without PHP
 
-⚠️ **There is no PHP on the development Mac** and `brew install php` builds the
-whole tree from source, because Homebrew stopped shipping bottles for this macOS
-version. Do not wait for it. Two things work instead, and both are in
-`.gitignore`d scratch space rather than committed:
+⚠️ **There is no PHP on the development Mac and `brew install php` CANNOT
+provide one.** Tried on 2026-08-26: the Mac is macOS 12, Homebrew ships no
+bottles for it, so everything builds from source — and the build **fails**, on
+`postgresql` (a PHP dependency, for `pdo_pgsql`) with an XML entity error in its
+docs, after roughly an hour. Homebrew then says outright: *"You are using macOS
+12. We (and Apple) do not provide support for this old version"* and points at
+MacPorts. ⚠️ **The command still exits 0**, so a script that only checks the
+exit status will report success; check `brew list --versions php`. It leaves
+~2.1GB of built dependencies behind either way.
+
+Two things work instead, and both live in `.gitignore`d scratch space:
 
 | | |
 |---|---|
