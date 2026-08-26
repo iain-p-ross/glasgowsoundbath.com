@@ -184,6 +184,12 @@ if (isset($_GET['file'])) {
 
 $arrivals = [];   // "date|source|campaign" => [visits, pageviews]
 $clicks   = [];   // "date|source|campaign|event|which" => n
+/* ⚠️ The status code was parsed and thrown away until 2026-08-26. When the
+   events listing failed, the beacon said only that it had, and the one record
+   that could have said WHY — a 502 from api/events.php sitting in this very
+   log — was discarded one line later. Counting is nearly free. */
+$errors   = [];   // "date|path|status" => n
+const ERROR_KEY_CAP = 200;
 $lastSeen = [];   // visitor hash => last request time, for the visit window
 
 $linesRead = 0; $bots = 0; $unparsed = 0; $beacons = 0;
@@ -227,7 +233,11 @@ foreach ($files as $file) {
             $p = []; parse_str($q, $p);
             $src   = isset($p['s']) ? preg_replace('/[^a-z0-9-]/i', '', (string)$p['s']) : '';
             $event = isset($p['e']) ? preg_replace('/[^0-9]/', '', (string)$p['e']) : '';
-            $which = isset($p['w']) ? preg_replace('/[^a-z]/i', '', (string)$p['w']) : '';
+            /* ⚠️ Digits and hyphens are kept, matching how `s` is sanitised. They
+               used to be stripped, which silently turned the listing-failure
+               reason "http502" into "http" — the one character that said what
+               had actually gone wrong. */
+            $which = isset($p['w']) ? preg_replace('/[^a-z0-9-]/i', '', (string)$p['w']) : '';
             $camp  = isset($p['c']) ? preg_replace('/[^A-Za-z0-9._-]/', '', (string)$p['c']) : '';
             if ($src !== '') {
                 $k = $day . '|' . $src . '|' . $camp . '|' . $event . '|' . $which;
@@ -235,6 +245,24 @@ foreach ($files as $file) {
                 $beacons++;
             }
             continue;
+        }
+
+        /* ---- failures ----
+           Anything that is not a success, for a path a visitor could be on.
+           Assets are excluded: a missing favicon is noise, a 502 from the events
+           feed is not. */
+        if ($status[0] === '4' || $status[0] === '5') {
+            if (isPageRequest($path) || strpos($path, '/api/') === 0) {
+                $ek = $day . '|' . $path . '|' . $status;
+                /* ⚠️ Capped. isPageRequest() is true for ANY path without an
+                   asset extension, so a scanner walking /wp-admin, /.env and
+                   friends under a user-agent the bot filter does not catch would
+                   otherwise add a row per path per day and bloat a response
+                   Apps Script has to fetch. Existing keys still count up. */
+                if (isset($errors[$ek]) || count($errors) < ERROR_KEY_CAP) {
+                    $errors[$ek] = (isset($errors[$ek]) ? $errors[$ek] : 0) + 1;
+                }
+            }
         }
 
         /* ---- arrivals ---- */
@@ -282,6 +310,15 @@ usort($outClicks, function ($a, $b) {
     return $a['date'] === $b['date'] ? strcmp($a['source'], $b['source']) : strcmp($a['date'], $b['date']);
 });
 
+$outErrors = [];
+foreach ($errors as $k => $n) {
+    list($d, $pth, $st) = array_pad(explode('|', $k, 3), 3, '');
+    $outErrors[] = ['date' => $d, 'path' => $pth, 'status' => $st, 'count' => $n];
+}
+usort($outErrors, function ($a, $b) {
+    return $a['date'] === $b['date'] ? strcmp($a['path'], $b['path']) : strcmp($a['date'], $b['date']);
+});
+
 echo json_encode([
     'ok' => true,
     'files_read'     => count($files),
@@ -295,4 +332,5 @@ echo json_encode([
     'visit_gap_secs' => VISIT_GAP,
     'arrivals'       => $outArrivals,
     'clicks'         => $outClicks,
+    'errors'         => $outErrors,
 ], JSON_UNESCAPED_SLASHES);

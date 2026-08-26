@@ -271,7 +271,9 @@
   /* ---- States ------------------------------------------------------------ */
   function ebLink(text) {
     const a = el('a', 'events-cta', text);
-    a.href = ORGANISER;
+    /* Tagged like every other route out. This is the link a visitor takes when
+       the listing has failed — precisely the visit we would otherwise lose. */
+    a.href = withAff(ORGANISER);
     a.target = '_blank';
     a.rel = 'noopener';
     return a;
@@ -288,6 +290,12 @@
   function succeed(list) {
     replaceWrap(list);
     wrap.dataset.ready = '1';
+    startBackgroundVideo();
+  }
+
+  /* Kicked once the listing is settled, on either path — the server-rendered
+     page is already settled at first paint, so it calls this directly. */
+  function startBackgroundVideo() {
     const bg = document.getElementById('bg-video');
     if (bg) {
       bg.preload = 'auto';
@@ -306,59 +314,174 @@
     replaceWrap(box);
   }
 
-  /* ---- Go ---------------------------------------------------------------- */
-  fetch(ENDPOINT, { credentials: 'omit' })
-    .then((r) => {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    })
-    .then((data) => {
-      const all = (data && Array.isArray(data.events)) ? data.events : [];
-      if (!all.length) {
-        degrade('No dates are listed right now. New sessions are announced on Eventbrite.');
-        return;
+  /* ---- Enhancement of server-rendered markup ----------------------------
+     index.php renders the listing into the page (see api/events-render.php),
+     which is what LLMs and non-rendering crawlers read. When it has, there is
+     nothing to fetch — only the behaviour that needs a browser: the aff code,
+     the click beacons, and the two expanders.
+
+     ⚠️ The markup here and in api/events-render.php are a pair. The renderer
+     emits data-ping on each link and data-event-id on each .event-item, and
+     this reads them back. Change one without the other and attribution stops.
+     ------------------------------------------------------------------- */
+
+  /* Every Eventbrite link on the page, not just the ones in the listing.
+     The "open the listings on Eventbrite" hint, the static fallback CTA and the
+     organiser-page note were all untagged until 2026-08-26, so a visitor who
+     took one of those routes bought a ticket we could not attribute — it landed
+     under ebdsoporgprofile as though they had found Eventbrite by themselves. */
+  function tagEventbriteLinks(root) {
+    if (!AFF_CODE) return;
+    const links = root.querySelectorAll('a[href*="eventbrite."]');
+    for (let i = 0; i < links.length; i++) {
+      const a = links[i];
+      try {
+        if (a.href.indexOf('aff=') === -1) a.href = withAff(a.href);
+      } catch (e) { /* one bad href must not stop the rest */ }
+    }
+  }
+
+  function enhanceServerMarkup() {
+    const items = wrap.querySelectorAll('.event-item');
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const id = item.getAttribute('data-event-id') || '';
+
+      const links = item.querySelectorAll('a[data-ping]');
+      for (let j = 0; j < links.length; j++) {
+        const a = links[j];
+        a.addEventListener('click', () => ping(a.getAttribute('data-ping'), id));
       }
-      const list = el('ul', 'event-list' + (SHOW_IMAGES ? ' event-list--images' : ''));
-      all.forEach((ev) => list.appendChild(card(ev)));
 
-      /* Everything is rendered up front, so expanding costs no extra request.
-         Beyond MAX_EVENTS the items are simply hidden until asked for. */
-      const hiddenCount = MAX_EVENTS > 0 ? all.length - MAX_EVENTS : 0;
-      if (hiddenCount > 0) {
-        const items = list.children;
-        for (let i = MAX_EVENTS; i < items.length; i++) items[i].hidden = true;
-
-        const wrapper = el('div', 'events-result');
-        wrapper.appendChild(list);
-
-        const showAll = el('button', 'events-showall');
-        showAll.type = 'button';
-        showAll.setAttribute('aria-expanded', 'false');
-        showAll.textContent = 'Show all ' + all.length + ' dates';
-        showAll.addEventListener('click', () => {
-          const open = showAll.getAttribute('aria-expanded') === 'true';
-          for (let i = MAX_EVENTS; i < items.length; i++) items[i].hidden = open;
-          showAll.setAttribute('aria-expanded', String(!open));
-          showAll.textContent = open
-            ? 'Show all ' + all.length + ' dates'
-            : 'Show fewer dates';
-          if (open) wrapper.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      /* The toggle ships hidden because a button that cannot work is worse than
+         no button; unhiding it is this script saying it can work. */
+      const toggle = item.querySelector('.event-toggle');
+      const panel  = item.querySelector('.event-desc');
+      if (toggle && panel) {
+        toggle.hidden = false;
+        const label = toggle.querySelector('span');
+        toggle.addEventListener('click', () => {
+          const open = toggle.getAttribute('aria-expanded') === 'true';
+          toggle.setAttribute('aria-expanded', String(!open));
+          if (label) label.textContent = open ? 'Show more' : 'Show less';
+          panel.hidden = open;
         });
-        wrapper.appendChild(showAll);
-        succeed(wrapper);
-        return;
       }
+    }
 
-      succeed(list);
-    })
-    .catch((err) => {
-      /* Any failure — network, bad JSON, or a bug in the code above — ends here
-         with a visible booking link rather than a spinner that never stops. */
-      if (window.console && console.warn) console.warn('[events]', err);
-      degrade('Upcoming dates could not be loaded just now.');
-      /* Report the failure the same way clicks are reported: a request to our own
-         server, which the access log records. Plausible used to carry this and
-         is gone. Nothing here may throw -- we are already in a catch. */
-      try { new Image().src = '/api/c.php?e=&s=listing-failed&w=error'; } catch (e) {}
-    });
+    const showAll = wrap.querySelector('.events-showall');
+    if (showAll) {
+      showAll.hidden = false;
+      const hiddenItems = [];
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].hidden) hiddenItems.push(items[i]);
+      }
+      const total = items.length;
+      showAll.addEventListener('click', () => {
+        const open = showAll.getAttribute('aria-expanded') === 'true';
+        for (let i = 0; i < hiddenItems.length; i++) hiddenItems[i].hidden = open;
+        showAll.setAttribute('aria-expanded', String(!open));
+        showAll.textContent = open ? 'Show all ' + total + ' dates' : 'Show fewer dates';
+        if (open) wrap.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      });
+    }
+
+    startBackgroundVideo();
+  }
+
+  /* ---- Client-side render (test_site/, and any page without the server one) */
+
+  /* ⚠️ Reports WHY, not just that it broke. Until 2026-08-26 every failure —
+     a 502, malformed JSON, a bug in card() — arrived identically as `w=error`,
+     so two real failures in the logs could not be told apart or diagnosed.
+     api/logs.php keeps digits and hyphens in `w` so "http502" survives. */
+  function reportFailure(reason) {
+    try { new Image().src = '/api/c.php?e=&s=listing-failed&w=' + encodeURIComponent(reason); } catch (e) {}
+  }
+
+  function fetchAndRender() {
+    let stage = 'network';
+
+    fetch(ENDPOINT, { credentials: 'omit' })
+      .then((r) => {
+        if (!r.ok) { stage = 'http' + r.status; throw new Error('HTTP ' + r.status); }
+        stage = 'parse';
+        return r.json();
+      })
+      .then((data) => {
+        stage = 'render';
+        const all = (data && Array.isArray(data.events)) ? data.events : [];
+        if (!all.length) {
+          degrade('No dates are listed right now. New sessions are announced on Eventbrite.');
+          return;
+        }
+
+        const list = el('ul', 'event-list' + (SHOW_IMAGES ? ' event-list--images' : ''));
+        /* ⚠️ Per event, deliberately. An event whose start_time or timezone the
+           API left empty makes Intl throw RangeError, and one unguarded throw
+           here used to abandon the whole listing — all 33 dates replaced by an
+           error message. One bad event must cost one date. api/events-lib.php
+           now drops such events server-side too; this is the second line. */
+        let rendered = 0;
+        all.forEach((ev) => {
+          try { list.appendChild(card(ev)); rendered++; }
+          catch (e) { if (window.console && console.warn) console.warn('[events] skipped', e); }
+        });
+        if (!rendered) {
+          degrade('Upcoming dates could not be loaded just now.');
+          reportFailure('render');
+          return;
+        }
+
+        tagEventbriteLinks(list);
+
+        /* Everything is rendered up front, so expanding costs no extra request.
+           Beyond MAX_EVENTS the items are simply hidden until asked for. */
+        const hiddenCount = MAX_EVENTS > 0 ? rendered - MAX_EVENTS : 0;
+        if (hiddenCount > 0) {
+          const items = list.children;
+          for (let i = MAX_EVENTS; i < items.length; i++) items[i].hidden = true;
+
+          const wrapper = el('div', 'events-result');
+          wrapper.appendChild(list);
+
+          const showAll = el('button', 'events-showall');
+          showAll.type = 'button';
+          showAll.setAttribute('aria-expanded', 'false');
+          showAll.textContent = 'Show all ' + rendered + ' dates';
+          showAll.addEventListener('click', () => {
+            const open = showAll.getAttribute('aria-expanded') === 'true';
+            for (let i = MAX_EVENTS; i < items.length; i++) items[i].hidden = open;
+            showAll.setAttribute('aria-expanded', String(!open));
+            showAll.textContent = open
+              ? 'Show all ' + rendered + ' dates'
+              : 'Show fewer dates';
+            if (open) wrapper.scrollIntoView({ block: 'start', behavior: 'smooth' });
+          });
+          wrapper.appendChild(showAll);
+          succeed(wrapper);
+          return;
+        }
+
+        succeed(list);
+      })
+      .catch((err) => {
+        /* Any failure — network, bad JSON, or a bug in the code above — ends
+           here with a visible booking link rather than a spinner that never
+           stops. Nothing in this block may throw: we are already in a catch. */
+        if (window.console && console.warn) console.warn('[events]', err);
+        degrade('Upcoming dates could not be loaded just now.');
+        reportFailure(stage);
+      });
+  }
+
+  /* ---- Go ---------------------------------------------------------------- */
+  tagEventbriteLinks(document);
+
+  if (wrap && wrap.getAttribute('data-server-rendered') === '1') {
+    enhanceServerMarkup();
+  } else {
+    fetchAndRender();
+  }
 })();

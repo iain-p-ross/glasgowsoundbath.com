@@ -1,3 +1,60 @@
+<?php
+/* Server-rendered upcoming events.
+
+   Until 2026-08-26 this file was index.html and the listing existed only after
+   events.js ran, so the page source carried no dates at all — an LLM or a
+   non-rendering crawler saw "Upcoming dates are listed on Eventbrite" and
+   nothing else. The events are now rendered here, from the same 15-minute cache
+   api/events.php serves, plus schema.org JSON-LD.
+
+   ⚠️ THIS BLOCK MUST NEVER BE ABLE TO TAKE THE HOMEPAGE DOWN. Before this
+   change a PHP fault cost the events listing; now it could cost the whole page,
+   which is a real increase in blast radius. Hence the catch-all: on any failure
+   $eventsHtml and $eventsJsonLd stay empty and the static #eventsFallback below
+   is what renders — exactly the behaviour this page had yesterday.
+
+   \Throwable catches PHP 7 Errors as well as Exceptions; a bare `catch
+   (Exception)` would let a TypeError through and blank the page. It also
+   catches a ParseError from a broken include — verified, and contrary to the
+   usual folklore: since PHP 7 a parse error in an INCLUDED file is a throwable
+   ParseError, not an unreachable E_COMPILE_ERROR. A parse error in THIS file is
+   still fatal and uncatchable, which is what the pre-deploy lint is for. */
+/* ⚠️ SET HEADERS FIRST. Anything below that prints — a PHP warning from a
+   missing include, with display_errors on — would be output, and a header()
+   after output is "headers already sent" plus a broken doctype. Matches
+   api/events.php: the listing must not be edge-cached, because an event pulled
+   from sale has to disappear on the next request, not fifteen minutes later. */
+header('Cache-Control: no-store, max-age=0');
+
+$eventsHtml   = '';
+$eventsJsonLd = '';
+try {
+    /* include, not require: a failed require is an E_COMPILE_ERROR that no
+       catch block can reach, which would break the promise made above. A failed
+       include is a warning, and the function_exists guard then turns it into
+       the ordinary empty-listing path. */
+    foreach (array('/api/events-lib.php', '/api/events-render.php') as $lib) {
+        /* is_readable first: a plain include of a missing file PRINTS a warning,
+           which becomes output before the doctype. Verified in php-wasm. */
+        if (!is_readable(__DIR__ . $lib)) {
+            throw new RuntimeException('missing ' . $lib);
+        }
+        include_once __DIR__ . $lib;
+    }
+    if (!function_exists('gsb_get_events') || !function_exists('gsb_render_event_list')) {
+        throw new RuntimeException('events library unavailable');
+    }
+    $gsb = gsb_get_events();
+    if ($gsb['ok'] && count($gsb['events'])) {
+        $eventsHtml   = gsb_render_event_list($gsb['events']);
+        $eventsJsonLd = gsb_events_jsonld($gsb['events']);
+    }
+} catch (\Throwable $e) {
+    $eventsHtml   = '';
+    $eventsJsonLd = '';
+}
+
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -34,6 +91,11 @@
   <meta property="og:url" content="https://www.glasgowsoundbath.com/" />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary_large_image" />
+
+  <!-- Event structured data. This is what earns a Google event rich result and
+       what an LLM reads first; it is generated from the same events rendered
+       below, so the two cannot disagree. -->
+  <?php echo $eventsJsonLd; ?>
 </head>
 <body>
 
@@ -101,7 +163,12 @@
      <!-- Upcoming Events -->
    <section id="events" class="section">
   <h2>Upcoming Events</h2>
-  <div class="embed-wrap" id="eventsWrap" aria-live="polite" aria-busy="true">
+  <div class="embed-wrap" id="eventsWrap" aria-live="polite"
+       aria-busy="<?php echo $eventsHtml === '' ? 'true' : 'false'; ?>"
+       <?php if ($eventsHtml !== '') { echo 'data-server-rendered="1" data-ready="1"'; } ?>>
+<?php if ($eventsHtml !== ''): ?>
+  <?php echo $eventsHtml; ?>
+<?php else: ?>
   <div id="eventsSkeleton" class="events-skeleton" role="status">
     <div class="spinner" aria-hidden="true"></div>
     <p class="loading-text">Listings loading…</p>
@@ -110,12 +177,13 @@
     </p>
   </div>
 
-  <!-- Static fallback: present without JavaScript, replaced by events.js on success.
-       If anything at all goes wrong, this is what a visitor is left with. -->
+  <!-- Static fallback: present without JavaScript, and what remains if the
+       server render above produced nothing. It has already earned its keep. -->
   <div class="events-fallback" id="eventsFallback">
     <p>Upcoming dates are listed on Eventbrite.</p>
     <a class="events-cta" href="https://glasgowsoundbath.eventbrite.com" target="_blank" rel="noopener">See all dates and book on Eventbrite</a>
   </div>
+<?php endif; ?>
 </div>
 
 <p class="events-more" role="note">
@@ -245,6 +313,6 @@
 
   <!-- Site JS -->
 <script src="script.js?v=202608232016" defer></script>
-<script src="/events.js?v=202608241730" defer></script>
+<script src="/events.js?v=202608260949" defer></script>
 </body>
 </html>

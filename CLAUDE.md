@@ -104,13 +104,27 @@ the host does not rewrite extensionless paths.
 ⚠️ `api/c.php` requires nothing, on purpose. A bad edit to `api/config.php` must
 not be able to take it down — that has already happened to the events feed.
 
+### `listing-failed` — and why it now says which failure
+
+`events.js` reports a failed listing as `s=listing-failed`. Until 2026-08-26 the
+reason was always the literal `w=error`, which was useless: **one `.catch()`
+covers a network failure, a non-200, malformed JSON *and* a bug in the render**,
+and they arrived indistinguishable. Two real failures were recorded on 24 and 25
+Aug 2026 and could not be diagnosed at all.
+
+It now reports the stage: `network`, `http<status>` (e.g. `http502`), `parse`,
+or `render`. Cross-reference against the `errors` list from `api/logs.php` — if
+the listing said `http502` there will be a matching `/api/events.php 502`.
+
 ## Files
 
 | | |
 |---|---|
-| `index.html` | the site. Hash-anchor nav only. Ships a static Eventbrite link (`#eventsFallback`) that shows if the listing fails — it has already earned its keep. |
-| `events.js` | events listing renderer, `resolveAff()`, the beacon. Deliberately isolated: a failure here must never take down the menu, lightbox, audio or video. |
-| `api/events.php` | server-side Eventbrite proxy. Token stays server-side. 15-min file cache, serves stale on upstream failure. Skips unlisted/invite-only events. |
+| `index.php` | the site. **Was `index.html` until 2026-08-26** — see "Server-rendered events" below. Hash-anchor nav only. Still ships the static Eventbrite link (`#eventsFallback`) for when the server render produces nothing. |
+| `events.js` | `resolveAff()`, the beacon, the expanders, and the *client-side* listing renderer used by `test_site/`. Deliberately isolated: a failure here must never take down the menu, lightbox, audio or video. |
+| `api/events-lib.php` | **the** source of events: fetch, 15-min cache, map. Prints nothing and never `exit()`s, so both `index.php` and `api/events.php` can use it. |
+| `api/events-render.php` | those events to page HTML and to schema.org JSON-LD. |
+| `api/events.php` | thin JSON wrapper over the library. Response shape `{updated, events}` is depended on by `events.js` and `test_site/`. |
 | `api/c.php` | click beacon. Returns 204. |
 | `api/logs.php` | parses the raw access log into daily aggregates. Token-gated. |
 | `api/config.php` | secrets. Hand-uploaded, git-ignored, deploy-excluded. |
@@ -118,6 +132,100 @@ not be able to take it down — that has already happened to the events feed.
 | `flyer/` | QR landing → homepage with `utm_source=flyer`. |
 | `stats/` | self-hosted AWStats dashboard. Deploy-excluded; the repo copy mirrors the server. |
 | `landing.html`, `script.js`, `styles.css` | the rest of the site. |
+
+## Server-rendered events (2026-08-26)
+
+**The listing is rendered by PHP into the page, and by JavaScript only on
+`test_site/`.** Before this, events existed *solely* after `events.js` ran.
+
+**Why it changed.** Asked about Glasgow soundbaths, an LLM reading this site
+found only "Upcoming dates are listed on Eventbrite" — the page source carried
+no date, venue, time or price anywhere. Verified: **0 JSON-LD blocks**, and the
+entire events section in the served HTML was the loading text plus three links
+to Eventbrite. Googlebot renders JavaScript and could eventually see the
+listing; **GPTBot, ClaudeBot and PerplexityBot do not** and could not. `robots.txt`
+was never the problem — it is `Allow: /`.
+
+```
+api/events-lib.php     fetch + cache + map      (no output, never exits)
+        |
+        +--> index.php            -> <ul class="event-list"> + JSON-LD   <- crawlers, LLMs
+        +--> api/events.php       -> {updated, events}                   <- events.js, test_site/
+```
+
+⚠️ **`api/events-render.php` and `card()` in `events.js` are a PAIR.** They emit
+the same classes, which `events.css` styles, and `events.js` finds the server
+markup by `data-ping` on each link and `data-event-id` on each `.event-item`.
+Change one without the other and either the styling or the attribution breaks.
+
+⚠️ **No `aff` code is written server-side, deliberately.** `resolveAff()` needs
+`document.referrer`, which only the browser has, and `classify()` in
+`api/logs.php` already has to mirror it. A third implementation in PHP would be
+a third thing to drift. `events.js` tags **every** Eventbrite link on the page
+after load — including the three fallback links, which were untagged until now,
+so a visitor who took one bought a ticket that landed under `ebdsoporgprofile`
+as though they had found Eventbrite unaided.
+
+⚠️ **A PHP fault can now cost the whole homepage, not just the listing.** That
+is a real increase in blast radius and the reason `index.php` wraps the whole
+thing in `catch (\Throwable)`, checks `is_readable` and uses `include_once`
+rather than `require` — **a failed `require` is an `E_COMPILE_ERROR` no catch
+can reach.** On any failure the page falls through to exactly the markup it
+served yesterday. Verified against four failure modes; see "Testing PHP".
+
+✅ **A parse error in an INCLUDED file is catchable, contrary to the folklore.**
+Since PHP 7 it arrives as a `ParseError` (`extends CompileError extends Error
+extends Throwable`), so `catch (\Throwable)` gets it — measured, not assumed:
+a deliberately corrupted `events-render.php` still rendered the full page with
+its fallback. **A parse error in `index.php` itself is still fatal and
+uncatchable**, which is the one case the pre-deploy lint exists for.
+
+⚠️ **`header()` must come before the try block, not after it.** A PHP warning
+printed with `display_errors` on is output, and output before `header()` is
+"headers already sent" plus a broken doctype. `is_readable` before each include
+is the other half of that: a plain `include` of a missing file *prints*.
+
+⚠️ **Bump the cache filename in `gsb_cache_file()` when the mapped shape
+changes.** The cache holds the *mapped* payload, so an old file is served
+happily with fields the new renderer looks for and cannot find. `v3` added
+prices and sold-out.
+
+⚠️ **`startDate` in the JSON-LD must carry the local offset (`+01:00`), never
+`Z`.** Google reads a bare UTC instant as UTC and would show 6:30pm for a 7:30pm
+summer event — the same class of error as the `Sales by day` BST bug in the
+sheet project.
+
+⚠️ **The overflow fold is the RENDERED position, not the index in `$events`.**
+Keyed off the input index, every event skipped above it pulls the fold one
+earlier and shows fewer than `GSB_MAX_VISIBLE` dates — silently, and only ever
+on the days something was already wrong. Caught by executing the renderer
+against a fixture with two bad events: 12 rendered, 6 hidden, 6 shown.
+
+⚠️ **One malformed event must cost one date.** `gsb_map_event()` drops an event
+with no usable `start`, and both renderers guard each event individually. The
+old code emitted `'start_time' => ... ?? ''`, and an empty string reaches
+`Intl`/`DateTime` as an invalid date — in the browser that threw `RangeError`
+out of `all.forEach(card)` and blanked **all** the dates. That is what fired the
+`listing-failed` beacon.
+
+**Prices and sold-out come from `expand=ticket_availability`** —
+`minimum_ticket_price`, `maximum_ticket_price`, `is_sold_out`. The sliding scale
+is rendered as a schema.org `AggregateOffer` (low £20 / high £30), because it is
+three prices for one experience, not three competing offers.
+
+**Progressive enhancement, both expanders.** The "Show all N dates" button and
+each "Show more" toggle ship `hidden` and are unhidden by `events.js` — a button
+that cannot work is worse than no button. The overflow dates and the descriptions
+are in the source either way, which is what crawlers read.
+
+⚠️ **`index.php` sets `Cache-Control: no-store`,** matching `api/events.php`: an
+event pulled from sale must disappear on the next request. The cost is that the
+homepage is no longer an edge-cacheable static file.
+
+⚠️ **The deploy SYNCS, so `index.html` is deleted from the server.** Nothing
+links to `/index.html` (checked) and the canonical URL is `/`, but `index.php`
+must be ahead of `index.html` in the host's `DirectoryIndex`. It is on cPanel by
+default.
 
 ## `api/logs.php`
 
@@ -146,6 +254,18 @@ seven months of every year.
 ⚠️ **Logs rotate.** Only ~a month survives on the server, which is why the sheet
 merges rather than replaces — it accumulates history the server no longer holds.
 
+**`errors`: non-2xx responses per path per day** (added 2026-08-26). The status
+code was parsed off every line and thrown away, so when the events listing
+failed, the one record that could have said *why* — a 502 from
+`api/events.php`, sitting in this very log — was discarded a line later. Only
+paths a visitor could be on, plus `/api/`; assets are excluded because a missing
+favicon is noise. Returned in the JSON and surfaced by `fn=webtraffic` in the
+sheet project; nothing writes it to a sheet, because no history of it is needed.
+
+⚠️ **`w` keeps digits and hyphens now.** It was sanitised to letters only, which
+silently turned a failure reason of `http502` into `http` — deleting the only
+characters that said what went wrong.
+
 ### Why not AWStats or Plausible
 
 **AWStats strips the query string**, so it can never report a campaign — the
@@ -153,6 +273,28 @@ whole recorded URL list is six entries with no query variants. It is also ~14.5%
 bots. **Plausible** was cancelled: its tier with Stats API access costs more than
 it is worth here, and its script was demonstrably blocked in Iain's own browser.
 The access log cannot be blocked and costs nothing.
+
+## Testing PHP without PHP
+
+⚠️ **There is no PHP on the development Mac** and `brew install php` builds the
+whole tree from source, because Homebrew stopped shipping bottles for this macOS
+version. Do not wait for it. Two things work instead, and both are in
+`.gitignore`d scratch space rather than committed:
+
+| | |
+|---|---|
+| **parse check** | `npm i php-parser` — a real PHP parser in JS. Catches the fatal class (unbalanced braces, bad syntax). ⚠️ **It does NOT reject PHP 8 syntax** even with `php7: true` — `match`, `?->`, `fn()` all pass. Grep for those separately. |
+| **execution** | `npm i @php-wasm/node @php-wasm/universal` — real PHP 8.0 in WASM. `loadNodeRuntime(v, { emscriptenOptions: { processId: 1 } })`, and **one `php.run()` per process**: a second run on the same instance hangs forever. |
+
+Seed `/tmp/gsb_events_cache_v3.json` and `index.php` renders with no network at
+all. The four failure modes worth re-running after any change here — all four
+must return a complete page with `<!DOCTYPE html>` first and the static
+fallback: **empty event list**, **one event with an empty `start_time`**,
+**a corrupted `events-render.php`**, **a missing `events-render.php`**.
+
+⚠️ **Do not pipe a long-running command into `tail`** — it buffers, so the
+output looks like a hang. That wasted two debugging cycles here, once on brew
+and once on the WASM runner.
 
 ## Privacy
 
@@ -170,8 +312,11 @@ Eventbrite, two Meta Pixels on the Eventbrite pages, and server logs. Open item.
 
 ## Gotchas that have already cost time
 
-- ⚠️ **Bump the `events.js?v=` cache-buster in `index.html` on every change**, or
+- ⚠️ **Bump the `events.js?v=` cache-buster in `index.php` on every change**, or
   the deploy lands a file nobody loads.
+- ⚠️ **There is no PHP on the development Mac** — see "Testing PHP without PHP".
+  **No PHP 8 syntax**: no `str_contains`, `??=`, `fn()`, `match`, `?->`, or
+  attributes. The host is 7.2.
 - ⚠️ **`api/config.php` must have a trailing comma on every array line.** A
   missing one is a parse error, and because `api/events.php` requires the same
   file it takes the **public events listing down with it**. This has happened.
@@ -218,6 +363,9 @@ permanently.
 | 2026-08-24 09:44 | Plausible removed |
 | 2026-08-24 | `/instagram` becomes the Instagram bio link |
 | 2026-08-24 | campaign id captured on arrivals and clicks |
+| 2026-08-26 | **events rendered server-side** with JSON-LD; before this no crawler or LLM could read a single date off the site |
+| 2026-08-26 | the three fallback Eventbrite links carry `aff`; before this they were untagged and their sales landed under `ebdsoporgprofile` |
+| 2026-08-26 | `listing-failed` reports a reason; before this every failure was the same opaque `error` |
 
 ⚠️ **`w-ig-bio` will look tiny for weeks.** The bio only started pointing at
 `/instagram` on 2026-08-24; earlier bio traffic is sitting untagged in
