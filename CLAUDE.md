@@ -359,6 +359,20 @@ Eventbrite, two Meta Pixels on the Eventbrite pages, and server logs. Open item.
   file it takes the **public events listing down with it**. This has happened.
 - ⚠️ **Deploys propagate with a lag** and LiteSpeed edge-caches HTML. A 404 or
   stale content right after a deploy is usually not a bug — re-check in a minute.
+- ⚠️ **Editing `.github/workflows/deploy.yml` stops deploys, twice over.**
+  Measured 2026-08-26, and it cost three commits that went nowhere:
+  1. With a credential lacking the **`workflow` scope**, the push is *accepted*
+     and GitHub creates **no run and no check suite at all** — not a failed run,
+     nothing. Every later push stays dead too, until an authorised push
+     re-registers the workflow. Fix: `gh auth refresh -h github.com -s workflow`.
+     ⚠️ `gh auth status` is the only place the scope list is visible.
+  2. Even **with** the scope, the workflow-touching push does not appear to
+     produce a run for its own commit — the previously blocked commits get
+     backfilled instead. So after editing this file, **expect the NEXT ordinary
+     push to be the one that deploys**, and confirm rather than assume:
+     `gh api "repos/<o>/<r>/actions/runs?head_sha=$(git rev-parse HEAD)" -q .total_count`
+  **A green `git push` is not a deploy.** Nothing in git tells you a run was
+  never created; only the Actions API does.
 - The `.embed-wrap` class in `index.html` is a leftover from the removed
   eventscalendar.co widget.
 - `0f796aa`/`0c91967`: Buy Tickets points at `tickets-external?eid=`, which once
