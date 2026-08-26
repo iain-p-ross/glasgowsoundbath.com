@@ -359,21 +359,23 @@ Eventbrite, two Meta Pixels on the Eventbrite pages, and server logs. Open item.
   file it takes the **public events listing down with it**. This has happened.
 - ⚠️ **Deploys propagate with a lag** and LiteSpeed edge-caches HTML. A 404 or
   stale content right after a deploy is usually not a bug — re-check in a minute.
-- ⚠️ **Editing `.github/workflows/deploy.yml` stops deploys, twice over.**
-  Measured 2026-08-26, and it cost three commits that went nowhere:
-  1. With a credential lacking the **`workflow` scope**, the push is *accepted*
-     and GitHub creates **no run and no check suite at all** — not a failed run,
-     nothing. Every later push stays dead too, until an authorised push
-     re-registers the workflow. Fix: `gh auth refresh -h github.com -s workflow`.
-     ⚠️ `gh auth status` is the only place the scope list is visible.
-  2. Even **with** the scope, the workflow-touching push does not appear to
-     produce a run for its own commit — the previously blocked commits get
-     backfilled instead. So after editing this file, **expect the NEXT ordinary
-     push to be the one that deploys**, and confirm rather than assume:
-     `gh api "repos/<o>/<r>/actions/runs?head_sha=$(git rev-parse HEAD)" -q .total_count`
-  **A green `git push` is not a deploy.** Nothing in git tells you a run was
-  never created; only the Actions API does.
-- The `.embed-wrap` class in `index.html` is a leftover from the removed
+- ⚠️ **Run creation is not prompt, and the delay varies wildly.** Measured
+  2026-08-26 across seven pushes: **3–4 seconds** in the morning, **7–14
+  minutes** the same afternoon. A check 40 seconds after pushing proves nothing.
+  ⚠️ It is also not guaranteed: one commit that day (`1c162c0`) got **no run at
+  all** — no failed run, no check suite — while the commits either side of it
+  ran fine. No cause was found, and the scope theory that looked obvious at the
+  time was wrong: the commits it "explained" all ran once GitHub caught up.
+- ✅ **A skipped commit is NOT a lost deploy.** The FTP action **syncs the whole
+  working tree**, so the next run that does fire uploads everything, including
+  whatever the skipped commit changed. This is why nothing was lost above.
+- ⚠️ **Verify a deploy against the live site, never against the Actions tab.**
+  `git push` exiting 0 says only that GitHub received the objects. What settles
+  it is `curl`:
+  ```bash
+  curl -s -o /dev/null -w '%{http_code}\n' https://glasgowsoundbath.com/
+  ```
+- The `.embed-wrap` class in `index.php` is a leftover from the removed
   eventscalendar.co widget.
 - `0f796aa`/`0c91967`: Buy Tickets points at `tickets-external?eid=`, which once
   returned HTTP 431 for a browser carrying a heavy Eventbrite session (the
