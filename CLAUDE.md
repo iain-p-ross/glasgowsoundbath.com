@@ -330,6 +330,20 @@ In `logs.php` the IP is used only to group requests into visits, hashed with a
 salt regenerated every run, and never returned. **`fbclid` is stripped** before
 anything reads the query. Only aggregates leave the server.
 
+⚠️ **THIS FILE WAS SERVED PUBLICLY at `/CLAUDE.md`** from 2026-08-24 to
+2026-08-26. The FTP deploy syncs, and it was neither excluded nor blocked, so
+the hosting layout, the home directory, the server access-log paths and every
+internal endpoint were a plain GET away. **Treat anything written here as
+public.** Now excluded from the deploy *and* denied in `.htaccess` — belt and
+braces, because the exclude list only stops the NEXT upload.
+⚠️ **The stale copy is still on the server and must be deleted by hand** via
+cPanel or FTP. `.htaccess` only makes it unreachable.
+
+**Everything else was checked at the same time and is fine:** `.env` 403,
+`api/logs.php` 403 (its own token gate), `.github/**` 404, `README.md` 404, and
+`api/*.php` return empty because they execute — no source leak. `test_site/`
+is 200, which is known and kept out of Google by `robots.txt`.
+
 ⚠️ **The site has no privacy policy. That is a genuine gap** — emails via
 Eventbrite, two Meta Pixels on the Eventbrite pages, and server logs. Open item.
 
