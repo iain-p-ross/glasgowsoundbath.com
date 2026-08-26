@@ -17,6 +17,18 @@ jobs:
           username: ${{ secrets.FTP_USER }}
           password: ${{ secrets.FTP_PASS }}
           server-dir: /glasgowsoundbath.com/
+          # ⚠️ LOAD-BEARING. This action SYNCS, so every committed file not listed
+          # here is uploaded into the PUBLIC web root — and files listed here are
+          # never deleted from the server either, which is why api/config.php is
+          # safe. CLAUDE.md was served at /CLAUDE.md for two days because nobody
+          # thought of a documentation file as a published one. .htaccess denies
+          # .md as a second line of defence.
+          #
+          # ⚠️ Editing THIS FILE needs a credential with the `workflow` scope.
+          # Without it the push is accepted and GitHub silently creates no run at
+          # all — not a failed run, no check suite whatsoever — and it stays that
+          # way for every later push until an authorised one re-registers it.
+          # `gh auth refresh -h github.com -s workflow` is the fix.
           exclude: |
             **/.git*
             **/.git*/**
