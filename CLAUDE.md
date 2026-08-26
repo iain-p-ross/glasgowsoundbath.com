@@ -188,7 +188,7 @@ is the other half of that: a plain `include` of a missing file *prints*.
 ⚠️ **Bump the cache filename in `gsb_cache_file()` when the mapped shape
 changes.** The cache holds the *mapped* payload, so an old file is served
 happily with fields the new renderer looks for and cannot find. `v3` added
-prices and sold-out.
+prices and sold-out, `v4` the waitlist flag.
 
 ⚠️ **`startDate` in the JSON-LD must carry the local offset (`+01:00`), never
 `Z`.** Google reads a bare UTC instant as UTC and would show 6:30pm for a 7:30pm
@@ -209,9 +209,28 @@ out of `all.forEach(card)` and blanked **all** the dates. That is what fired the
 `listing-failed` beacon.
 
 **Prices and sold-out come from `expand=ticket_availability`** —
-`minimum_ticket_price`, `maximum_ticket_price`, `is_sold_out`. The sliding scale
-is rendered as a schema.org `AggregateOffer` (low £20 / high £30), because it is
-three prices for one experience, not three competing offers.
+`minimum_ticket_price`, `maximum_ticket_price`, `is_sold_out`,
+`waitlist_available`. The sliding scale is rendered as a schema.org
+`AggregateOffer` (low £20 / high £30), because it is three prices for one
+experience, not three competing offers.
+
+⚠️ **A SOLD-OUT EVENT MUST STILL LINK TO THE CHECKOUT.** The waitlist is joined
+through the normal checkout — verified both ways: Iain confirmed it, and the
+`tickets-external` page for a sold-out event is full of waitlist markup. The
+first version of this dropped the link "so nobody hits a dead end", which would
+have silently killed waitlist signups. **Eventbrite exposes no waitlist endpoint
+at all** (`/waitlist/` 403s, `/waitlist_items/` 404s — see the sheet project's
+CLAUDE.md), so the waitlist is the ONLY measurement of demand above capacity
+there is: fill rate stops at 100% and says nothing beyond it. The label reads
+"Sold out — Join Waiting List" when `waitlist_available`, plain "Sold out"
+otherwise, and it keeps `data-ping="ticket"` so the beacon measures it.
+
+⚠️ **`is_sold_out` means "no ticket is purchasable right now", NOT "sold to
+capacity".** Measured on this account: **true on 50 of 50 past events**,
+including ones that closed at 60% fill, because an ended event sells nothing.
+It is safe here only because the fetch asks for `status=live` and
+`time_filter=current_future`. Reuse it over history and you will compute a 100%
+sellout rate and have no reason to doubt it.
 
 **Progressive enhancement, both expanders.** The "Show all N dates" button and
 each "Show more" toggle ship `hidden` and are unhidden by `events.js` — a button
@@ -286,7 +305,7 @@ version. Do not wait for it. Two things work instead, and both are in
 | **parse check** | `npm i php-parser` — a real PHP parser in JS. Catches the fatal class (unbalanced braces, bad syntax). ⚠️ **It does NOT reject PHP 8 syntax** even with `php7: true` — `match`, `?->`, `fn()` all pass. Grep for those separately. |
 | **execution** | `npm i @php-wasm/node @php-wasm/universal` — real PHP 8.0 in WASM. `loadNodeRuntime(v, { emscriptenOptions: { processId: 1 } })`, and **one `php.run()` per process**: a second run on the same instance hangs forever. |
 
-Seed `/tmp/gsb_events_cache_v3.json` and `index.php` renders with no network at
+Seed `/tmp/gsb_events_cache_v4.json` and `index.php` renders with no network at
 all. The four failure modes worth re-running after any change here — all four
 must return a complete page with `<!DOCTYPE html>` first and the static
 fallback: **empty event list**, **one event with an empty `start_time`**,

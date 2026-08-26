@@ -140,10 +140,19 @@ function gsb_render_event_item($ev, $overflow)
 
     $tickets = !empty($ev['tickets_link']) ? $ev['tickets_link'] : $ev['event_link'];
     if (!empty($ev['sold_out'])) {
-        /* Sold out is worth stating plainly. It also stops a visitor bouncing to
-           a checkout that cannot serve them, and it is the same fact the JSON-LD
-           reports as schema.org/SoldOut. */
-        $h .= gsb_meta_row('ticket', 'Sold out');
+        /* ⚠️ A sold-out event MUST still link to the checkout. The waitlist is
+           joined through the normal checkout flow — verified: the
+           tickets-external page for a sold-out event is full of waitlist
+           markup — and a waitlist is the ONLY measurement of demand above
+           capacity there is, since Eventbrite exposes no waitlist endpoint at
+           all (403/404, see the sheet project's CLAUDE.md). Dropping the link
+           to avoid a "dead end" would have thrown that away.
+
+           The label still says sold out, so nobody clicks expecting a ticket,
+           and the beacon still fires — so waitlist interest is now measurable
+           for the first time. */
+        $label = !empty($ev['waitlist']) ? 'Sold out — Join Waiting List' : 'Sold out';
+        $h .= gsb_meta_link('ticket', $label, $tickets);
     } else {
         $h .= gsb_meta_link('ticket', 'Buy Tickets', $tickets);
     }

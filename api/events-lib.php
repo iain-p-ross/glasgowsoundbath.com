@@ -25,10 +25,10 @@ const GSB_MAX_PAGES    = 5;     // 50 events per page; a guard against looping f
 /* ⚠️ Bump this filename whenever the mapped shape changes. The cache holds the
    MAPPED payload, not the raw Eventbrite response, so an old file would be
    served happily with fields the new renderer expects and cannot find. v3 adds
-   the price and sold-out fields. */
+   the price and sold-out fields; v4 added waitlist. */
 function gsb_cache_file()
 {
-    return sys_get_temp_dir() . '/gsb_events_cache_v3.json';
+    return sys_get_temp_dir() . '/gsb_events_cache_v4.json';
 }
 
 /**
@@ -70,10 +70,18 @@ function gsb_get_events()
             'status'      => 'live',
             'order_by'    => 'start_asc',
             'time_filter' => 'current_future',
-            /* ticket_availability carries minimum/maximum_ticket_price and
-               is_sold_out. It is what lets the page say "Sold out" and what
-               fills schema.org offers — without it Google will not show an
-               event rich result. */
+            /* ticket_availability carries minimum/maximum_ticket_price,
+               is_sold_out and waitlist_available. It is what lets the page say
+               "Sold out" and what fills schema.org offers — without it Google
+               will not show an event rich result.
+
+               ⚠️ is_sold_out means "no ticket is purchasable right now", NOT
+               "sold to capacity". Measured against this account: it is true on
+               50 of 50 PAST events, including ones that closed at 60% fill,
+               because an ended event sells nothing. Harmless here only because
+               this endpoint asks for status=live and time_filter=current_future.
+               Anyone reusing this field over history would compute a 100%
+               sellout rate and believe it. */
             'expand'      => 'venue,logo,ticket_availability',
         );
         if ($continue !== null) {
@@ -188,6 +196,7 @@ function gsb_map_event($e)
         'price_max'        => gsb_major_price($avail, 'maximum_ticket_price'),
         'currency'         => gsb_price_currency($avail),
         'sold_out'         => !empty($avail['is_sold_out']),
+        'waitlist'         => !empty($avail['waitlist_available']),
     );
 }
 
