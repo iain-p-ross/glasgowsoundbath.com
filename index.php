@@ -302,7 +302,7 @@ try {
   </main>
 
   <footer class="site-footer">
-    <p>© <span id="year"></span> Glasgow Soundbath</p>
+    <p>© <span id="year"></span> Glasgow Soundbath · <a href="/privacy">Privacy</a></p>
   </footer>
 
   <!-- Floating sound button -->
