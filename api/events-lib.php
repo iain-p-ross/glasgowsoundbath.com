@@ -25,10 +25,10 @@ const GSB_MAX_PAGES    = 5;     // 50 events per page; a guard against looping f
 /* ⚠️ Bump this filename whenever the mapped shape changes. The cache holds the
    MAPPED payload, not the raw Eventbrite response, so an old file would be
    served happily with fields the new renderer expects and cannot find. v3 adds
-   the price and sold-out fields; v4 added waitlist. */
+   the price and sold-out fields; v4 added waitlist; v5 added sales_start. */
 function gsb_cache_file()
 {
-    return sys_get_temp_dir() . '/gsb_events_cache_v4.json';
+    return sys_get_temp_dir() . '/gsb_events_cache_v5.json';
 }
 
 /**
@@ -197,7 +197,47 @@ function gsb_map_event($e)
         'currency'         => gsb_price_currency($avail),
         'sold_out'         => !empty($avail['is_sold_out']),
         'waitlist'         => !empty($avail['waitlist_available']),
+        'sales_start'      => gsb_sales_start($e, $avail),
     );
+}
+
+/**
+ * When tickets for this event became buyable — schema.org offers.validFrom,
+ * which Search Console asked for on 2026-08-31.
+ *
+ * ⚠️ ticket_availability.start_sales_date IS ALMOST ALWAYS NULL. Measured that
+ * day against this account: present on 1 of 33 live events, because it only
+ * exists when the organiser scheduled a sales start by hand. Taking it alone
+ * would have left validFrom missing on 32 dates and the warning exactly where
+ * it was.
+ *
+ * ⚠️ The fallback is the LATER of published and created, never either alone.
+ * These are series occurrences, so `published` is the SERIES' publish date and
+ * predates the occurrence's own `created` on 28 of the 33 — a validFrom months
+ * before the date itself existed. `created` alone is wrong the other way for an
+ * event drafted first and published later. The later of the two is the first
+ * moment at which the date both existed and was public.
+ */
+function gsb_sales_start($e, $avail)
+{
+    if (isset($avail['start_sales_date']['utc'])) {
+        $ssd = (string)$avail['start_sales_date']['utc'];
+        if ($ssd !== '' && strtotime($ssd) !== false) {
+            return $ssd;
+        }
+    }
+
+    $best = '';
+    foreach (array('published', 'created') as $key) {
+        $v = isset($e[$key]) ? (string)$e[$key] : '';
+        if ($v === '' || strtotime($v) === false) {
+            continue;
+        }
+        if ($best === '' || strtotime($v) > strtotime($best)) {
+            $best = $v;
+        }
+    }
+    return $best;   // '' is fine: the renderer simply omits validFrom
 }
 
 function gsb_major_price($avail, $key)

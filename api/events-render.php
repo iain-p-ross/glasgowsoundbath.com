@@ -31,6 +31,12 @@ const GSB_MAX_VISIBLE = 8;
 const GSB_ORGANISER_URL = 'https://glasgowsoundbath.eventbrite.com';
 const GSB_SITE_URL      = 'https://www.glasgowsoundbath.com/';
 
+/* Every date is led by the same person — "sound artist and musician Iain Ross",
+   as the About section on index.php puts it — so the schema.org performer is a
+   constant here, not a mapped field. Eventbrite has no performer concept to map
+   it from. */
+const GSB_PERFORMER_NAME = 'Iain Ross';
+
 function gsb_esc($s)
 {
     return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
@@ -260,6 +266,15 @@ function gsb_event_node($ev)
             'name'  => 'Glasgow Soundbath',
             'url'   => GSB_SITE_URL,
         ),
+        /* ⚠️ organizer is NOT performer, and Google wants both. Search Console
+           flagged 'Missing field "performer"' on 2026-08-31 — non-critical, so
+           the rich result still showed, but it is one of the fields that can be
+           reclassified as critical. */
+        'performer'            => array(
+            '@type' => 'Person',
+            'name'  => GSB_PERFORMER_NAME,
+            'url'   => GSB_SITE_URL,
+        ),
     );
 
     if (!empty($ev['end_time'])) {
@@ -291,7 +306,13 @@ function gsb_event_node($ev)
 /**
  * The sliding scale is three real prices for one experience, so it is an
  * AggregateOffer with a low and a high — not three competing Offers, and not a
- * single price that would misreport whichever tier it picked.
+ * single price that would misreport whichever tier it picked. With no price at
+ * all it stays a bare Offer.
+ *
+ * ⚠️ validFrom is added to whichever of the three it turns out to be. Search
+ * Console flagged 'Missing field "validFrom" (in "offers")' on 2026-08-31, and
+ * it was missing from every one of them. Where the value comes from — and why
+ * it is NOT start_sales_date alone — is gsb_sales_start() in events-lib.php.
  */
 function gsb_offer_node($ev)
 {
@@ -300,37 +321,41 @@ function gsb_offer_node($ev)
         return null;
     }
 
-    $availability = !empty($ev['sold_out'])
-        ? 'https://schema.org/SoldOut'
-        : 'https://schema.org/InStock';
+    /* @type is assigned first and only ever overwritten in place, so it stays
+       the first key in the JSON however this ends up being shaped. */
+    $offer = array(
+        '@type'        => 'Offer',
+        'url'          => $url,
+        'availability' => !empty($ev['sold_out'])
+            ? 'https://schema.org/SoldOut'
+            : 'https://schema.org/InStock',
+    );
 
     $min = isset($ev['price_min']) ? $ev['price_min'] : '';
     $max = isset($ev['price_max']) ? $ev['price_max'] : '';
-    if ($min === '' && $max === '') {
-        return array(
-            '@type'        => 'Offer',
-            'url'          => $url,
-            'availability' => $availability,
-        );
+    if ($min !== '' || $max !== '') {
+        $offer['priceCurrency'] = !empty($ev['currency']) ? $ev['currency'] : 'GBP';
+        if ($max === '' || $min === $max) {
+            $offer['price'] = $min !== '' ? $min : $max;
+        } else {
+            $offer['@type']     = 'AggregateOffer';
+            $offer['lowPrice']  = $min;
+            $offer['highPrice'] = $max;
+        }
     }
 
-    $currency = !empty($ev['currency']) ? $ev['currency'] : 'GBP';
-    if ($max === '' || $min === $max) {
-        return array(
-            '@type'         => 'Offer',
-            'url'           => $url,
-            'price'         => $min !== '' ? $min : $max,
-            'priceCurrency' => $currency,
-            'availability'  => $availability,
-        );
+    /* ⚠️ A bad sales_start must cost validFrom, never the offer and never the
+       event — the same rule as everywhere else in this file. gsb_local() throws
+       on an unusable date rather than returning today, which is exactly what is
+       wanted here: catch it and carry on without the field. Local offset, not
+       Z, for the same reason startDate carries one. */
+    if (!empty($ev['sales_start'])) {
+        try {
+            $offer['validFrom'] = gsb_local($ev['sales_start'], $ev['timezone'])->format('c');
+        } catch (\Throwable $e) {
+            // no validFrom; Search Console calls its absence non-critical
+        }
     }
 
-    return array(
-        '@type'         => 'AggregateOffer',
-        'url'           => $url,
-        'lowPrice'      => $min,
-        'highPrice'     => $max,
-        'priceCurrency' => $currency,
-        'availability'  => $availability,
-    );
+    return $offer;
 }

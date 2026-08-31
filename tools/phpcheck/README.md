@@ -32,8 +32,8 @@ in a comment:
 
 | scenario | what it proves |
 |---|---|
-| `good` | 11 events, 8 visible, one JSON-LD block, `startDate` carries a local offset |
-| `mixed` | an empty `start_time` and a bad timezone cost one date each, not the listing |
+| `good` | 11 events, 8 visible, one JSON-LD block, `startDate` and `validFrom` carry a local offset, every node has a `performer` |
+| `mixed` | an empty `start_time` and a bad timezone cost one date each, not the listing; an unusable `sales_start` costs only `validFrom` |
 | `soldout` | a sold-out event still LINKS to the checkout — that is how the waitlist is joined |
 | `empty` | no events falls back to the static markup |
 | `broken-lib` | a `ParseError` in the library still renders the page |

@@ -39,6 +39,7 @@ const event = (i, start, extra) => Object.assign({
   tickets_link: 'https://www.eventbrite.com/tickets-external?eid=19908844870' + i,
   price_min: '20.00', price_max: '30.00', currency: 'GBP',
   sold_out: false, waitlist: false,
+  sales_start: '2026-06-01T09:00:00Z',
 }, extra || {});
 
 (async () => {
@@ -57,6 +58,7 @@ const event = (i, start, extra) => Object.assign({
   if (mode === 'mixed') {
     events.splice(3, 0, event(90, ''));                                   // the event that blanked the live listing
     events.splice(6, 0, event(91, '2026-09-20T18:30:00Z', { timezone: 'Mars/Olympus' }));
+    events[0].sales_start = 'not a date';   // must cost validFrom, not the event
   }
   if (mode === 'soldout') {
     events.push(event(92, '2026-12-05T19:30:00Z', { sold_out: true, waitlist: true }));
@@ -80,6 +82,16 @@ const event = (i, start, extra) => Object.assign({
   const chunks = html.split('<li class="event-item"');
   const chunkFor = (id) => chunks.find((c) => c.includes('data-event-id="' + id + '"')) || '';
 
+  /* Parse the graph once: null means there was no block, -1 worth of nodes
+     means there was one and it was not valid JSON. */
+  const graph = (() => {
+    const m = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
+    if (!m) return null;
+    try { return JSON.parse(m[1])['@graph']; } catch (e) { return undefined; }
+  })();
+  const nodes = Array.isArray(graph) ? graph : [];
+  const offerOf = (n) => (n && n.offers) || {};
+
   console.log(JSON.stringify({
     mode,
     exitCode: r.exitCode,
@@ -87,15 +99,16 @@ const event = (i, start, extra) => Object.assign({
     eventItems: (html.match(/<li class="event-item"/g) || []).length,
     hiddenItems: (html.match(/<li class="event-item" hidden/g) || []).length,
     jsonLdBlocks: (html.match(/application\/ld\+json/g) || []).length,
-    jsonLdNodes: (() => {
-      const m = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
-      if (!m) return 0;
-      try { return JSON.parse(m[1])['@graph'].length; } catch (e) { return -1; }
-    })(),
+    jsonLdNodes: graph === null ? 0 : (Array.isArray(graph) ? graph.length : -1),
     jsonLdStartDate: (() => {
       const m = html.match(/"startDate":"([^"]+)"/);
       return m ? m[1] : '';
     })(),
+    /* Search Console, 2026-08-31: missing performer, missing offers.validFrom. */
+    nodesWithPerformer: nodes.filter((n) => n.performer && n.performer.name === 'Iain Ross').length,
+    nodesWithValidFrom: nodes.filter((n) => offerOf(n).validFrom).length,
+    jsonLdValidFrom: nodes.length ? (offerOf(nodes[0]).validFrom || '') : '',
+    offerTypes: [...new Set(nodes.map((n) => offerOf(n)['@type']).filter(Boolean))].sort(),
     serverRendered: html.includes('data-server-rendered="1"'),
     fallbackShown: html.includes('id="eventsFallback"'),
     doctypeFirst: html.trimStart().startsWith('<!DOCTYPE html>'),

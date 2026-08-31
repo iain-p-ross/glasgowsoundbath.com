@@ -188,10 +188,10 @@ is the other half of that: a plain `include` of a missing file *prints*.
 ⚠️ **Bump the cache filename in `gsb_cache_file()` when the mapped shape
 changes.** The cache holds the *mapped* payload, so an old file is served
 happily with fields the new renderer looks for and cannot find. `v3` added
-prices and sold-out, `v4` the waitlist flag.
+prices and sold-out, `v4` the waitlist flag, `v5` `sales_start`.
 
-⚠️ **`startDate` in the JSON-LD must carry the local offset (`+01:00`), never
-`Z`.** Google reads a bare UTC instant as UTC and would show 6:30pm for a 7:30pm
+⚠️ **`startDate` and `offers.validFrom` in the JSON-LD must carry the local
+offset (`+01:00`), never `Z`.** Google reads a bare UTC instant as UTC and would show 6:30pm for a 7:30pm
 summer event — the same class of error as the `Sales by day` BST bug in the
 sheet project.
 
@@ -213,6 +213,32 @@ out of `all.forEach(card)` and blanked **all** the dates. That is what fired the
 `waitlist_available`. The sliding scale is rendered as a schema.org
 `AggregateOffer` (low £20 / high £30), because it is three prices for one
 experience, not three competing offers.
+
+### `performer` and `offers.validFrom` (2026-08-31)
+
+Search Console reported two **non-critical** Events structured-data issues:
+*Missing field "validFrom" (in "offers")* and *Missing field "performer"*. Both
+were missing from every event. Non-critical means the rich result still showed,
+but Google says these can be reclassified as critical.
+
+**`performer` is a constant**, `Person` / `Iain Ross` — the About section says
+"led by sound artist and musician Iain Ross", every date is led by the same
+person, and Eventbrite has no performer concept to map it from. ⚠️ `organizer`
+is not `performer`; Google wants both, and the organiser was already there.
+
+⚠️ **`ticket_availability.start_sales_date` IS ALMOST ALWAYS NULL** — measured
+against this account on 2026-08-31: **present on 1 of 33 live events**, because
+it only exists when the organiser set a sales start by hand. Taking it alone
+would have left `validFrom` missing on 32 dates and the warning where it was.
+
+⚠️ **The fallback is the LATER of `published` and `created`, never either
+alone.** These are series occurrences, so `published` is the *series'* publish
+date and **predates the occurrence's own `created` on 28 of the 33** — a
+`validFrom` months before the date itself existed. `created` alone is wrong the
+other way for an event drafted first and published later. Neither field needs an
+expand. Verified by running `gsb_map_event()` and the renderer over the real
+payload: 32 mapped, 32 with `validFrom`, none of them after the event start and
+none in the future.
 
 ⚠️ **A SOLD-OUT EVENT MUST STILL LINK TO THE CHECKOUT.** The waitlist is joined
 through the normal checkout — verified both ways: Iain confirmed it, and the
@@ -312,7 +338,7 @@ and the whole directory is excluded from the deploy.
 ```bash
 cd tools/phpcheck && npm install
 npm run lint   # parse-check every .php, and grep for PHP 8 syntax
-npm test       # 56 checks: index.php across six scenarios
+npm test       # 61 checks: index.php across six scenarios
 ```
 
 ⚠️ **Run `npm test` after touching `index.php` or `api/events-render.php`.**
@@ -419,6 +445,7 @@ permanently.
 | 2026-08-26 | **events rendered server-side** with JSON-LD; before this no crawler or LLM could read a single date off the site |
 | 2026-08-26 | the three fallback Eventbrite links carry `aff`; before this they were untagged and their sales landed under `ebdsoporgprofile` |
 | 2026-08-26 | `listing-failed` reports a reason; before this every failure was the same opaque `error` |
+| 2026-08-31 | JSON-LD carries `performer` and `offers.validFrom`, after Search Console flagged both as missing |
 
 ⚠️ **`w-ig-bio` will look tiny for weeks.** The bio only started pointing at
 `/instagram` on 2026-08-24; earlier bio traffic is sitting untagged in

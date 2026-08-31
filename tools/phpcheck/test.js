@@ -23,6 +23,10 @@ const SCENARIOS = {
     ['emits exactly one JSON-LD block', r.jsonLdBlocks === 1],
     ['one JSON-LD node per event', r.jsonLdNodes === 11],
     ['startDate carries a local offset, not Z', /\+\d\d:\d\d$/.test(r.jsonLdStartDate)],
+    ['every node names a performer', r.nodesWithPerformer === 11],
+    ['every offer carries validFrom', r.nodesWithValidFrom === 11],
+    ['validFrom carries a local offset, not Z', /\+\d\d:\d\d$/.test(r.jsonLdValidFrom)],
+    ['a sliding scale is an AggregateOffer', r.offerTypes.join() === 'AggregateOffer'],
     ['marks the wrapper server-rendered', r.serverRendered === true],
     ['hides the static fallback', r.fallbackShown === false],
     ['keeps Buy Tickets', r.buyTicketsPresent === true],
@@ -34,6 +38,7 @@ const SCENARIOS = {
     ['drops only the unusable events', r.eventItems === 11 && r.seededEvents === 13],
     ['fold counts RENDERED items, not input index', r.eventItems - r.hiddenItems === 8],
     ['still emits JSON-LD', r.jsonLdNodes === 11],
+    ['an unusable sales_start costs validFrom, not the event', r.nodesWithValidFrom === 10],
     ['does not fall back', r.fallbackShown === false],
   ],
 
@@ -96,7 +101,7 @@ for (const [mode, assertions] of Object.entries(SCENARIOS)) {
 
 /* Assert the assertions ran. Without this, a rename that emptied SCENARIOS
    would report a clean pass having tested nothing at all. */
-const EXPECTED_MIN = 45;
+const EXPECTED_MIN = 50;
 console.log(`\n${checks} checks, ${failed} failed`);
 if (checks < EXPECTED_MIN) {
   console.log(`FAIL: only ${checks} checks ran, expected at least ${EXPECTED_MIN}. Something is not running.`);
