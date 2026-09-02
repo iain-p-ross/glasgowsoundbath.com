@@ -322,7 +322,7 @@ The access log cannot be blocked and costs nothing.
 ## Testing PHP without PHP
 
 ⚠️ **There is no PHP on the development Mac and `brew install php` CANNOT
-provide one.** Tried on 2026-08-26: the Mac is macOS 12, Homebrew ships no
+provide one.** Tried on 2026-08-26: the Mac was macOS 12, Homebrew ships no
 bottles for it, so everything builds from source — and the build **fails**, on
 `postgresql` (a PHP dependency, for `pdo_pgsql`) with an XML entity error in its
 docs, after roughly an hour. Homebrew then says outright: *"You are using macOS
@@ -330,6 +330,23 @@ docs, after roughly an hour. Homebrew then says outright: *"You are using macOS
 MacPorts. ⚠️ **The command still exits 0**, so a script that only checks the
 exit status will report success; check `brew list --versions php`. It leaves
 ~2.1GB of built dependencies behind either way.
+
+⚠️ **The macOS 13 upgrade did NOT change this — checked 2026-09-02.** The Mac
+is now Ventura (via OpenCore Legacy Patcher on a mid-2015 MacBook Pro), and
+Homebrew prints the *same* refusal with a new number: *"You are using macOS 13.
+We (and Apple) do not provide support for this old version"*, still pointing at
+MacPorts. It is also now blocked earlier — `Error: No developer tools
+installed.` The upgrade cleared the Command Line Tools, so nothing can build
+from source at all until `xcode-select --install` is run, which would only lead
+back to the same hour-long build. **Do not spend time on this again.**
+
+⚠️ **That machine is also not a performance reference.** OCLP means patched
+graphics drivers and degraded hardware video decode, so `backdrop-filter` and
+the background video stutter there while the same page is smooth on a phone and
+on other hardware. A "the site got slower" report from it needs reproducing
+elsewhere before anything is optimised — on 2026-09-02 one cost an afternoon and
+the site turned out to be fine. macOS **Reduce motion** fixes it locally:
+`script.js` watches `prefers-reduced-motion` and swaps the video for its poster.
 
 **Use `tools/phpcheck/`** — real PHP 8.0 compiled to WebAssembly, plus a JS PHP
 parser. Read its README; it carries the gotchas. `node_modules` is git-ignored

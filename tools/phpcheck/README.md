@@ -1,7 +1,9 @@
 # phpcheck — parse and run this site's PHP, without PHP
 
 There is no PHP on the development Mac, and **`brew install php` cannot provide
-one**: the Mac is macOS 12, Homebrew ships no bottles for it, so everything
+one**: the Mac is too old for Homebrew (macOS 12 when this was written, macOS
+13 since — the refusal is identical, and the Command Line Tools are gone too),
+so everything
 builds from source and the build fails on `postgresql` after about an hour.
 Homebrew says outright that it does not support this macOS version. ⚠️ It still
 **exits 0** — only `brew list --versions php` tells the truth.
