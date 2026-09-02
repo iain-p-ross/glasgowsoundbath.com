@@ -24,9 +24,15 @@ npm run php -- x.php # run one script with api/ mounted
 
 **`npm run lint`** catches the fatal class — unbalanced braces, bad syntax.
 That is the class that matters, because a parse error in `index.php` is the one
-failure `catch (\Throwable)` cannot save. ⚠️ The parser does **not** reject PHP 8
-syntax even set to `php7` (`match`, `?->`, `fn()` all parse clean), so a separate
-grep covers the PHP-8-only functions and syntax. The host is **PHP 7.2**.
+failure `catch (\Throwable)` cannot save. Since 2026-09-02 it shells out to a
+**real `/opt/local/bin/php74`** (MacPorts) and falls back to the JS parser only
+when no binary is found — it prints which one it used, because a silent
+downgrade would turn a green lint into no lint. ⚠️ The JS parser does **not**
+reject PHP 8 syntax even set to `php7` (`match`, `?->`, `fn()` all parse clean),
+and `php74 -l` has its own blind spots (`#[Attr]` is a *comment* to PHP 7;
+`fn()` and `??=` are valid 7.4; function names are never checked at all), so a
+separate grep covers those either way. The host is **PHP 7.2**.
+`PHPCHECK_PHP=none` forces the fallback so that path stays testable.
 
 **`npm test`** executes `index.php` under six scenarios and asserts what must not
 regress. Every case is a bug that actually happened or a guarantee the code makes

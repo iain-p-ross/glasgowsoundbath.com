@@ -348,15 +348,41 @@ elsewhere before anything is optimised — on 2026-09-02 one cost an afternoon a
 the site turned out to be fine. macOS **Reduce motion** fixes it locally:
 `script.js` watches `prefers-reduced-motion` and swaps the video for its poster.
 
-**Use `tools/phpcheck/`** — real PHP 8.0 compiled to WebAssembly, plus a JS PHP
-parser. Read its README; it carries the gotchas. `node_modules` is git-ignored
+✅ **MacPorts DID work, 2026-09-02 — there is now a real `php` on this Mac.**
+Homebrew's own error points at MacPorts, and it was right. `sudo port install
+php74` gives `/opt/local/bin/php74` (7.4.33). It never needed the broken
+compiler because MacPorts fetched a **prebuilt archive**.
+
+⚠️ **`php72` exists as a port but is flagged "known to fail"** — MacPorts says
+so before it starts. Do not take that bet; **74 is the right choice anyway**,
+see the blind spots below. ⚠️ A *newer* binary is worse, not better: php80+
+accepts every construct the host would reject.
+
+⚠️ **`php -l` is NOT a substitute for the grep in `lint.js`.** Measured against
+each construct: php74 rejects `match`, `?->`, `enum`, named arguments and
+constructor promotion, but ACCEPTS four things this repo bans —
+**`#[Attr]`** (`#` opens a *comment* in PHP 7, so an attribute parses clean and
+silently does nothing), **`fn()`** and **`??=`** (7.4 syntax — fine for 7.4,
+fatal on 7.2), and **`str_contains()`** and friends (function *names* are calls,
+not syntax; `php -l` never checks whether a function exists). The grep runs
+either way, and must.
+
+**Use `tools/phpcheck/`** — the real binary for syntax, real PHP 8.0 compiled to
+WebAssembly for behaviour, and a JS PHP parser as the fallback when no binary is
+installed. Read its README; it carries the gotchas. `node_modules` is git-ignored
 and the whole directory is excluded from the deploy.
 
 ```bash
 cd tools/phpcheck && npm install
-npm run lint   # parse-check every .php, and grep for PHP 8 syntax
-npm test       # 61 checks: index.php across six scenarios
+npm run lint   # php74 -l every .php, and grep for PHP 8 syntax and functions
+npm test       # 61 checks: index.php across six scenarios (php-wasm 8.0)
 ```
+
+⚠️ **`npm run lint` prints which engine it used.** It falls back to the JS
+parser when it finds no binary, and that parser does **not** reject PHP 8 syntax
+even set to `php7` — so a silent downgrade would turn a green lint into no lint
+at all. `PHPCHECK_PHP=none` forces the fallback, which is the only way to test
+that path on a machine that has a binary.
 
 ⚠️ **Run `npm test` after touching `index.php` or `api/events-render.php`.**
 Every case in it is a bug that actually happened. It has been checked against
@@ -394,9 +420,10 @@ Eventbrite, two Meta Pixels on the Eventbrite pages, and server logs. Open item.
 
 - ⚠️ **Bump the `events.js?v=` cache-buster in `index.php` on every change**, or
   the deploy lands a file nobody loads.
-- ⚠️ **There is no PHP on the development Mac** — see "Testing PHP without PHP".
-  **No PHP 8 syntax**: no `str_contains`, `??=`, `fn()`, `match`, `?->`, or
-  attributes. The host is 7.2.
+- ⚠️ **PHP on the development Mac is MacPorts `php74`, not the host's 7.2** —
+  see "Testing PHP without PHP". **No PHP 8 syntax**: no `str_contains`, `??=`,
+  `fn()`, `match`, `?->`, or attributes. The host is 7.2, and `php74 -l` catches
+  only some of those — the grep in `lint.js` catches the rest.
 - ⚠️ **`api/config.php` must have a trailing comma on every array line.** A
   missing one is a parse error, and because `api/events.php` requires the same
   file it takes the **public events listing down with it**. This has happened.
