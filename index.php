@@ -71,7 +71,7 @@ try {
   <link rel="preload" as="image" href="/assets/video-poster.webp">
 
   <!-- CSS -->
-<link rel="stylesheet" href="/styles.css?v=20260206c">
+<link rel="stylesheet" href="/styles.css?v=20260902a">
 <link rel="stylesheet" href="/events.css?v=202608211609">
 
   <!-- Fonts (optional, can be removed to save bytes) -->
